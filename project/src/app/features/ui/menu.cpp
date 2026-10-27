@@ -45,7 +45,7 @@ void Menu::run()
 
 		const float search_h{ ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y };
 
-		ImGui::SetWindowSize({ 600.0f, 460.0f + m_footer_h + search_h }, ImGuiCond_::ImGuiCond_Once);
+		ImGui::SetWindowSize({ scaled(600.0f), scaled(460.0f) + m_footer_h + search_h }, ImGuiCond_::ImGuiCond_Once);
 
 		drawSearchBar();
 

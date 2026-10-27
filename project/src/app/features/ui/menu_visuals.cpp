@@ -150,9 +150,9 @@ void Menu::pageVisualsEntities()
 	{
 		static EVGroup *temp_group{};
 
-		ImGui::BeginChild("group_entities_first", { 145.0f, 0.0f });
+		ImGui::BeginChild("group_entities_first", { scaled(145.0f), 0.0f });
 		{
-			ImGui::BeginChild("group_entities_groups", { 145.0f, ImGui::GetContentRegionAvail().y * 0.51f }, ImGuiChildFlags_Border);
+			ImGui::BeginChild("group_entities_groups", { scaled(145.0f), ImGui::GetContentRegionAvail().y * 0.51f }, ImGuiChildFlags_Border);
 			{
 				ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
@@ -280,7 +280,7 @@ void Menu::pageVisualsEntities()
 
 		ImGui::SameLine();
 
-		ImGui::BeginChild("group_entities_classes", { 145.0f, 0.0f }, ImGuiChildFlags_Border);
+		ImGui::BeginChild("group_entities_classes", { scaled(145.0f), 0.0f }, ImGuiChildFlags_Border);
 		{
 			ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
@@ -384,7 +384,7 @@ void Menu::pageVisualsEntities()
 
 		ImGui::SameLine();
 
-		ImGui::BeginChild("group_entities_conditions", { 145.0f, 0.0f }, ImGuiChildFlags_Border);
+		ImGui::BeginChild("group_entities_conditions", { scaled(145.0f), 0.0f }, ImGuiChildFlags_Border);
 		{
 			ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
@@ -533,7 +533,7 @@ void Menu::pageVisualsEntities()
 
 		ImGui::SameLine();
 
-		ImGui::BeginChild("group_entities_effects", { 145.0f, 0.0f }, ImGuiChildFlags_Border);
+		ImGui::BeginChild("group_entities_effects", { scaled(145.0f), 0.0f }, ImGuiChildFlags_Border);
 		{
 			ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
@@ -1121,6 +1121,10 @@ void Menu::pageVisualsColors()
 				if (customWidget("save as theme")) {
 					themeSaveInput();
 				}
+
+				sep();
+
+				sliderFloat("scale", &cfg::ui_scale, 0.75f, 2.0f, "%.2fx");
 			});
 		}
 		endColumn();

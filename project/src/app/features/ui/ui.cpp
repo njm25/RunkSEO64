@@ -149,16 +149,6 @@ bool UI::onLoad()
 		io->MouseDrawCursor = false;
 
 		io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-		ImFontConfig cfg{};
-		{
-			cfg.OversampleH = 1;
-			cfg.OversampleV = 1;
-			cfg.PixelSnapH = true;
-			cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Monochrome | ImGuiFreeTypeBuilderFlags_MonoHinting;
-		}
-
-		io->FontDefault = io->Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\TAHOMA.TTF", 13.0f, &cfg);
 	}
 
 	if (ImGuiStyle *const style{ &ImGui::GetStyle() })
@@ -192,9 +182,46 @@ bool UI::onLoad()
 		style->AntiAliasedFill = false;
 		style->AntiAliasedLines = false;
 		style->AntiAliasedLinesUseTex = false;
+
+		m_base_style = *style;
 	}
 
+	applyScale(std::clamp(cfg::ui_scale, 0.75f, 2.0f));
+
 	return true;
+}
+
+//rebuilds the font at the new pixel size and scales every style size, has to happen outside of a frame
+void UI::applyScale(const float scale)
+{
+	ImGuiIO &io{ ImGui::GetIO() };
+
+	ImFontConfig font_cfg{};
+	{
+		font_cfg.OversampleH = 1;
+		font_cfg.OversampleV = 1;
+		font_cfg.PixelSnapH = true;
+		font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Monochrome | ImGuiFreeTypeBuilderFlags_MonoHinting;
+	}
+
+	io.Fonts->Clear();
+
+	//whole pixel sizes keep the monochrome font crisp
+	io.FontDefault = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\TAHOMA.TTF", std::floor(13.0f * scale + 0.5f), &font_cfg);
+
+	if (!io.FontDefault) {
+		io.FontDefault = io.Fonts->AddFontDefault();
+	}
+
+	//the backend recreates the font texture on its next NewFrame
+	ImGui_ImplDX9_InvalidateDeviceObjects();
+
+	ImGuiStyle &style{ ImGui::GetStyle() };
+
+	style = m_base_style;
+	style.ScaleAllSizes(scale);
+
+	m_scale = scale;
 }
 
 bool UI::onUnload()
@@ -304,6 +331,11 @@ void UI::start()
 	if (input_dx->getKey(VK_INSERT).pressed) {
 		m_open = !m_open;
 		i::input_system->ResetInputState();
+	}
+
+	//waits for the scale slider to be let go, rebuilding the font every frame of a drag would crawl
+	if (const float scale{ std::clamp(cfg::ui_scale, 0.75f, 2.0f) }; scale != m_scale && !ImGui::IsAnyItemActive()) {
+		applyScale(scale);
 	}
 
 	float hue{};

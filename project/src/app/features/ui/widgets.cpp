@@ -1,6 +1,7 @@
 #include "widgets.hpp"
 #include "binds.hpp"
 #include "tooltips.hpp"
+#include "ui.hpp"
 
 #include "../notifs/notifs.hpp"
 #include "../cfg.hpp"
@@ -1126,7 +1127,7 @@ void section(const char *const id, const char *const title, const float width, c
 
 			ImGui::Separator();
 
-			ImGui::PushItemWidth(100.0f);
+			ImGui::PushItemWidth(scaled(100.0f));
 
 			cur_section = sec;
 			search_show_all = title_match;
@@ -1141,9 +1142,9 @@ void section(const char *const id, const char *const title, const float width, c
 		return;
 	}
 
-	ImGui::BeginChild(id, { width, 0.0f }, flags);
+	ImGui::BeginChild(id, { scaled(width), 0.0f }, flags);
 	{
-		ImGui::PushItemWidth(item_width > 0.0f ? item_width : ImGui::GetContentRegionAvail().x);
+		ImGui::PushItemWidth(item_width > 0.0f ? scaled(item_width) : ImGui::GetContentRegionAvail().x);
 
 		ImGui::TextUnformatted(title);
 		sectionContext(sec);

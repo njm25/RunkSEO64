@@ -21,11 +21,19 @@ private:
 	std::optional<Color> m_preview_color{};
 
 private:
+	ImGuiStyle m_base_style{}; //unscaled
+	float m_scale{};
+
+private:
+	void applyScale(const float scale);
+
+private:
 	void loadThemes();
 	void saveThemes() const;
 
 public:
 	bool isOpen() const { return m_open; }
+	float scale() const { return m_scale; }
 
 public:
 	const std::vector<Theme> &getThemes() const { return m_themes; }
@@ -50,3 +58,9 @@ public:
 };
 
 MAKE_UNIQUE(UI, ui);
+
+//hardcoded menu sizes go through this so they follow the ui scale
+inline float scaled(const float size)
+{
+	return size * ui->scale();
+}

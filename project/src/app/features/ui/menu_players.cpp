@@ -1,5 +1,6 @@
 #include "menu.hpp"
 #include "widgets.hpp"
+#include "ui.hpp"
 
 #include "../player_list/player_list.hpp"
 
@@ -7,9 +8,9 @@ void Menu::tabPlayers()
 {
 	ImGui::BeginChild("group_player_list", { 0.0f, -m_footer_h });
 	{
-		ImGui::BeginChild("group_player_list_tags", { 200.0f, 0.0f }, ImGuiChildFlags_Border);
+		ImGui::BeginChild("group_player_list_tags", { scaled(200.0f), 0.0f }, ImGuiChildFlags_Border);
 		{
-			ImGui::PushItemWidth(100.0f);
+			ImGui::PushItemWidth(scaled(100.0f));
 
 			ImGui::Text("tags");
 			ImGui::Separator();
@@ -77,7 +78,7 @@ void Menu::tabPlayers()
 
 					if (ImGui::BeginPopup("tag_popup_edit"))
 					{
-						ImGui::PushItemWidth(100.0f);
+						ImGui::PushItemWidth(scaled(100.0f));
 						ImGui::Text("edit tag");
 
 						ImGui::Separator();
@@ -118,7 +119,7 @@ void Menu::tabPlayers()
 
 		ImGui::BeginChild("group_player_list_players", { 0.0f, 0.0f }, ImGuiChildFlags_Border);
 		{
-			ImGui::PushItemWidth(100.0f);
+			ImGui::PushItemWidth(scaled(100.0f));
 
 			ImGui::Text("players");
 			ImGui::Separator();

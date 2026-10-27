@@ -402,7 +402,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("key", ImVec2{ 30.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("key", ImVec2{ scaled(30.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				ImGui::Text(utils::keyToStr(bind.key).c_str());
 			}
@@ -410,7 +410,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("type", ImVec2{ 40.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("type", ImVec2{ scaled(40.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				ImGui::Text(bind.type == BindType::TOGGLE ? "toggle" : "hold");
 			}
@@ -418,7 +418,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("value", ImVec2{ ui->isOpen() ? 35.0f : 25.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("value", ImVec2{ scaled(ui->isOpen() ? 35.0f : 25.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				if (!bind.selects.empty())
 				{
@@ -460,7 +460,7 @@ void Binds::paint()
 			{
 				ImGui::SameLine();
 
-				ImGui::BeginChild("appear_in_bindslist", ImVec2{ 25.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+				ImGui::BeginChild("appear_in_bindslist", ImVec2{ scaled(25.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 				{
 					ImGui::Text(bind.appear_in_bindslist ? "true" : "false");
 				}

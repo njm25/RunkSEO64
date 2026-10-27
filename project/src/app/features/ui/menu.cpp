@@ -89,8 +89,25 @@ void Menu::run()
 		window_flags |= ImGuiWindowFlags_NoInputs;
 	}
 
-	if (ImGui::Begin("Runkseo64", nullptr, window_flags))
+	//gradient and image backgrounds are drawn by the ui instead of the window
+	const bool custom_bg{ ui->customBackground() };
+
+	if (custom_bg) {
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
+	}
+
+	const bool visible{ ImGui::Begin("Runkseo64", nullptr, window_flags) };
+
+	if (custom_bg) {
+		ImGui::PopStyleColor();
+	}
+
+	if (visible)
 	{
+		if (custom_bg) {
+			ui->drawBackground(ImGui::GetWindowDrawList(), ImGui::GetWindowPos(), ImGui::GetWindowSize());
+		}
+
 		m_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 
 		// space reserved at the bottom for the footer

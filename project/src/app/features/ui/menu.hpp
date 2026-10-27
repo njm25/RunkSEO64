@@ -14,7 +14,7 @@ enum class AimbotTab
 
 enum class VisualsTab
 {
-	ENTITIES, MAP, OTHER, COLORS
+	ENTITIES, MAP, OTHER, COLORS, MENU
 };
 
 class Menu final : public HasUnload
@@ -73,6 +73,7 @@ private:
 	void pageVisualsMap();
 	void pageVisualsOther();
 	void pageVisualsColors();
+	void pageVisualsMenu();
 
 	void tabMisc();
 	void tabPlayers();

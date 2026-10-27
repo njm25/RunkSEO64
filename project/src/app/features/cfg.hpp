@@ -413,6 +413,12 @@ MAKE_CFGVAR(ui_color_accent, Color({ 230, 70, 80, 255 }));
 MAKE_CFGVAR(ui_rounding, 0.0f);
 MAKE_CFGVAR(ui_border_size, 1.0f);
 MAKE_CFGVAR(ui_padding, 4.0f);
+MAKE_CFGVAR(ui_bg_style, 0); // (0 = solid) (1 = gradient) (2 = image)
+MAKE_CFGVAR(ui_color_bg_gradient, Color({ 10, 10, 30, 255 }));
+MAKE_CFGVAR(ui_bg_gradient_dir, 0); // (0 = top to bottom) (1 = left to right)
+MAKE_CFGVAR(ui_bg_image, std::string("")); //path to a png, jpg, bmp or tga
+MAKE_CFGVAR(ui_bg_image_opacity, 0.3f);
+MAKE_CFGVAR(ui_bg_image_fit, 0); // (0 = cover) (1 = stretch)
 MAKE_CFGVAR(ui_scale, 1.0f);
 MAKE_CFGVAR(ui_scroll_edit, true);
 MAKE_CFGVAR(ui_slider_buttons, true);

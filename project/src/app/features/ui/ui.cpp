@@ -1,6 +1,9 @@
 #include "ui.hpp"
 
 #include "ui_fonts.hpp"
+#include "ui_image.hpp"
+
+#include "../../../shared/libs/imgui/imgui_internal.hpp"
 
 #include "../notifs/notifs.hpp"
 #include "../cfg.hpp"
@@ -18,6 +21,7 @@ static const Theme preset_themes[]
 	{ "graphite red", { Color{ 75, 75, 80, 255 }, true, Color{ 230, 70, 80, 255 } }, true },
 	{ "graphite blue", { Color{ 75, 75, 80, 255 }, true, Color{ 70, 150, 240, 255 } }, true },
 	{ "soft", { Color{ 80, 85, 100, 255 }, true, Color{ 120, 170, 255, 255 }, 6.0f, 0.0f, 8.0f }, true },
+	{ "dusk", { Color{ 90, 70, 110, 255 }, true, Color{ 255, 140, 90, 255 }, 4.0f, 1.0f, 6.0f, 1, Color{ 60, 20, 30, 255 } }, true },
 };
 
 static bool sameColor(const Color a, const Color b)
@@ -39,12 +43,20 @@ bool ThemeValues::operator==(const ThemeValues &other) const
 {
 	//the accent only matters when it's in use
 	return sameColor(base, other.base) && accent_custom == other.accent_custom && (!accent_custom || sameColor(accent, other.accent))
-		&& rounding == other.rounding && border == other.border && padding == other.padding;
+		&& rounding == other.rounding && border == other.border && padding == other.padding
+		&& bg_style == other.bg_style
+		&& (bg_style != 1 || (sameColor(gradient, other.gradient) && gradient_dir == other.gradient_dir))
+		&& (bg_style != 2 || (image == other.image && image_opacity == other.image_opacity && image_fit == other.image_fit));
 }
 
 ThemeValues UI::currentTheme() const
 {
-	return ThemeValues{ cfg::ui_color_base, cfg::ui_accent_custom, cfg::ui_color_accent, cfg::ui_rounding, cfg::ui_border_size, cfg::ui_padding };
+	return ThemeValues
+	{
+		cfg::ui_color_base, cfg::ui_accent_custom, cfg::ui_color_accent,
+		cfg::ui_rounding, cfg::ui_border_size, cfg::ui_padding,
+		cfg::ui_bg_style, cfg::ui_color_bg_gradient, cfg::ui_bg_gradient_dir, cfg::ui_bg_image, cfg::ui_bg_image_opacity, cfg::ui_bg_image_fit
+	};
 }
 
 void UI::applyTheme(const ThemeValues &values)
@@ -59,6 +71,19 @@ void UI::applyTheme(const ThemeValues &values)
 	cfg::ui_rounding = values.rounding;
 	cfg::ui_border_size = values.border;
 	cfg::ui_padding = values.padding;
+
+	cfg::ui_bg_style = values.bg_style;
+
+	if (values.bg_style == 1) {
+		cfg::ui_color_bg_gradient = values.gradient;
+		cfg::ui_bg_gradient_dir = values.gradient_dir;
+	}
+
+	if (values.bg_style == 2) {
+		cfg::ui_bg_image = values.image;
+		cfg::ui_bg_image_opacity = values.image_opacity;
+		cfg::ui_bg_image_fit = values.image_fit;
+	}
 }
 
 static const FontPreset preset_fonts[]
@@ -242,6 +267,17 @@ void UI::loadThemes()
 			values.border = t.value("border", values.border);
 			values.padding = t.value("padding", values.padding);
 
+			values.bg_style = t.value("bg_style", values.bg_style);
+
+			if (t.contains("gradient")) {
+				values.gradient = colorFromJson(t["gradient"]);
+			}
+
+			values.gradient_dir = t.value("gradient_dir", values.gradient_dir);
+			values.image = t.value("image", values.image);
+			values.image_opacity = t.value("image_opacity", values.image_opacity);
+			values.image_fit = t.value("image_fit", values.image_fit);
+
 			m_themes.push_back(Theme{ name, values, false });
 		}
 	}
@@ -269,6 +305,12 @@ void UI::saveThemes() const
 			{ "rounding", theme.values.rounding },
 			{ "border", theme.values.border },
 			{ "padding", theme.values.padding },
+			{ "bg_style", theme.values.bg_style },
+			{ "gradient", colorToJson(theme.values.gradient) },
+			{ "gradient_dir", theme.values.gradient_dir },
+			{ "image", theme.values.image },
+			{ "image_opacity", theme.values.image_opacity },
+			{ "image_fit", theme.values.image_fit },
 		});
 	}
 
@@ -514,8 +556,157 @@ void UI::applyFonts(const FontSpec &spec)
 	m_font_spec = spec;
 }
 
+IDirect3DTexture9 *UI::backgroundTexture(const std::string &path)
+{
+	if (path == m_bg_texture_path && m_bg_texture) {
+		return m_bg_texture;
+	}
+
+	if (path == m_bg_failed_path) {
+		return nullptr;
+	}
+
+	releaseDeviceObjects();
+
+	DecodedImage image{};
+	std::string error{};
+
+	if (!decodeImageFile(path, image, error))
+	{
+		m_bg_failed_path = path;
+		notifs->warning(std::format("couldn't load the background image ({})", error));
+
+		return nullptr;
+	}
+
+	IDirect3DTexture9 *texture{};
+
+	if (i::dxdev->CreateTexture(image.width, image.height, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &texture, nullptr) < 0 || !texture)
+	{
+		m_bg_failed_path = path;
+		notifs->warning("couldn't create a texture for the background image");
+
+		return nullptr;
+	}
+
+	D3DLOCKED_RECT locked{};
+
+	if (texture->LockRect(0, &locked, nullptr, 0) != D3D_OK)
+	{
+		texture->Release();
+		m_bg_failed_path = path;
+
+		return nullptr;
+	}
+
+	//rgba -> argb, which is what d3d calls A8R8G8B8 in memory
+	for (int y{}; y < image.height; y++)
+	{
+		uint32_t *const row{ reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(locked.pBits) + static_cast<size_t>(locked.Pitch) * y) };
+		const uint8_t *const src{ image.rgba.data() + static_cast<size_t>(y) * image.width * 4 };
+
+		for (int x{}; x < image.width; x++) {
+			const uint8_t *const p{ src + x * 4 };
+			row[x] = static_cast<uint32_t>(p[3]) << 24 | static_cast<uint32_t>(p[0]) << 16 | static_cast<uint32_t>(p[1]) << 8 | p[2];
+		}
+	}
+
+	texture->UnlockRect(0);
+
+	m_bg_texture = texture;
+	m_bg_texture_path = path;
+	m_bg_texture_size = { static_cast<float>(image.width), static_cast<float>(image.height) };
+	m_bg_failed_path.clear();
+
+	return m_bg_texture;
+}
+
+void UI::releaseDeviceObjects()
+{
+	if (m_bg_texture) {
+		m_bg_texture->Release();
+		m_bg_texture = nullptr;
+	}
+
+	//loaded again on the next draw
+	m_bg_texture_path.clear();
+}
+
+void UI::drawBackground(ImDrawList *const draw_list, const ImVec2 &pos, const ImVec2 &size)
+{
+	const ThemeValues &theme{ m_frame_theme };
+
+	if (theme.bg_style == 0 || !draw_list) {
+		return;
+	}
+
+	const ImGuiStyle &style{ ImGui::GetStyle() };
+	const ImVec2 max{ pos.x + size.x, pos.y + size.y };
+	const float rounding{ style.WindowRounding };
+
+	//the window's own background was hidden, so this draws one with the same opacity and corners
+	const ImVec4 bg{ style.Colors[ImGuiCol_WindowBg] };
+	const float alpha{ bg.w * style.Alpha };
+
+	if (theme.bg_style == 1)
+	{
+		const int vtx_start{ draw_list->VtxBuffer.Size };
+
+		draw_list->AddRectFilled(pos, max, IM_COL32(255, 255, 255, static_cast<int>(alpha * 255.0f)), rounding);
+
+		const ImVec2 to{ theme.gradient_dir == 1 ? ImVec2{ max.x, pos.y } : ImVec2{ pos.x, max.y } };
+		const ImU32 from_col{ ImGui::ColorConvertFloat4ToU32({ bg.x, bg.y, bg.z, 1.0f }) };
+		const ImU32 to_col{ IM_COL32(theme.gradient.r, theme.gradient.g, theme.gradient.b, 255) };
+
+		//recolors just the rect above, its alpha stays
+		ImGui::ShadeVertsLinearColorGradientKeepAlpha(draw_list, vtx_start, draw_list->VtxBuffer.Size, pos, to, from_col, to_col);
+
+		return;
+	}
+
+	draw_list->AddRectFilled(pos, max, ImGui::ColorConvertFloat4ToU32({ bg.x, bg.y, bg.z, alpha }), rounding);
+
+	if (theme.image.empty()) {
+		return;
+	}
+
+	IDirect3DTexture9 *const texture{ backgroundTexture(theme.image) };
+
+	if (!texture) {
+		return;
+	}
+
+	ImVec2 uv0{ 0.0f, 0.0f };
+	ImVec2 uv1{ 1.0f, 1.0f };
+
+	//cover crops the image to the window's shape instead of squashing it
+	if (theme.image_fit == 0 && m_bg_texture_size.x > 0.0f && m_bg_texture_size.y > 0.0f && size.y > 0.0f)
+	{
+		const float window_aspect{ size.x / size.y };
+		const float image_aspect{ m_bg_texture_size.x / m_bg_texture_size.y };
+
+		if (image_aspect > window_aspect) {
+			const float visible{ window_aspect / image_aspect };
+			uv0.x = (1.0f - visible) * 0.5f;
+			uv1.x = 1.0f - uv0.x;
+		}
+
+		else {
+			const float visible{ image_aspect / window_aspect };
+			uv0.y = (1.0f - visible) * 0.5f;
+			uv1.y = 1.0f - uv0.y;
+		}
+	}
+
+	const float image_alpha{ std::clamp(theme.image_opacity, 0.0f, 1.0f) * style.Alpha };
+
+	draw_list->AddImageRounded(reinterpret_cast<ImTextureID>(texture), pos, max, uv0, uv1, IM_COL32(255, 255, 255, static_cast<int>(image_alpha * 255.0f)), rounding);
+}
+
 bool UI::onUnload()
 {
+	releaseDeviceObjects();
+
 	ImGui_ImplDX9_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 
@@ -696,6 +887,7 @@ void UI::start()
 	const ThemeValues theme{ m_preview_theme.value_or(currentTheme()) };
 
 	m_preview_theme.reset();
+	m_frame_theme = theme;
 
 	setColors(theme);
 	setShape(theme);

@@ -2402,6 +2402,7 @@ MAKE_HOOK(
 	IDirect3DDevice9 *rcx, D3DPRESENT_PARAMETERS *pPresentationParameters)
 {
 	ImGui_ImplDX9_InvalidateDeviceObjects();
+	ui->releaseDeviceObjects();
 
 	const HRESULT result{ CALL_ORIGINAL(rcx, pPresentationParameters) };
 

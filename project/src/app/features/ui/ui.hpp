@@ -44,6 +44,13 @@ struct ThemeValues final
 	float border{ 1.0f };
 	float padding{ 4.0f };
 
+	int bg_style{}; //0 solid, 1 gradient, 2 image
+	Color gradient{ 10, 10, 30, 255 };
+	int gradient_dir{};
+	std::string image{};
+	float image_opacity{ 0.3f };
+	int image_fit{};
+
 	bool operator==(const ThemeValues &other) const;
 };
 
@@ -62,6 +69,16 @@ private:
 private:
 	std::vector<Theme> m_themes{};
 	std::optional<ThemeValues> m_preview_theme{};
+	ThemeValues m_frame_theme{}; //what this frame is being drawn with, preview included
+
+private:
+	IDirect3DTexture9 *m_bg_texture{};
+	std::string m_bg_texture_path{};
+	ImVec2 m_bg_texture_size{};
+	std::string m_bg_failed_path{}; //so a bad image is reported once instead of every frame
+
+private:
+	IDirect3DTexture9 *backgroundTexture(const std::string &path);
 
 private:
 	ImGuiStyle m_base_style{}; //unscaled
@@ -99,6 +116,13 @@ public:
 
 	//draws the next frame with this theme instead of the configured one
 	void previewTheme(const ThemeValues &values) { m_preview_theme = values; }
+
+	//gradient or image backgrounds replace the window background, call right after Begin
+	bool customBackground() const { return m_frame_theme.bg_style != 0; }
+	void drawBackground(ImDrawList *const draw_list, const ImVec2 &pos, const ImVec2 &size);
+
+	//textures made here die with the device, called from the device reset hook
+	void releaseDeviceObjects();
 
 public:
 	//loads a font file next to the menu font so it can be shown in the font picker, nullptr until it's ready

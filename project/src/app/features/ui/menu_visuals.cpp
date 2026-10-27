@@ -2,6 +2,7 @@
 #include "widgets.hpp"
 #include "ui.hpp"
 #include "ui_fonts.hpp"
+#include "ui_image.hpp"
 
 #include "../notifs/notifs.hpp"
 #include "../entity_visuals/entity_visuals.hpp"
@@ -288,6 +289,38 @@ static void fontPresetSaveInput()
 	name.clear();
 }
 
+//path to a background image, checked by decoding it before it's used
+static void backgroundImageInput()
+{
+	static std::string path{};
+
+	inputStringWithHint("##bg_image", &path, cfg::ui_bg_image.empty() ? "image path" : cfg::ui_bg_image.c_str());
+
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+		ImGui::SetTooltip("full path to a png, jpg, bmp or tga, press enter to use it");
+	}
+
+	if (!(ImGui::IsItemDeactivated() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) || path.empty()) {
+		return;
+	}
+
+	//pasted paths often come quoted
+	std::erase(path, '"');
+
+	DecodedImage image{};
+	std::string error{};
+
+	if (!decodeImageFile(path, image, error)) {
+		notifs->warning(std::format("can't use '{}' ({})", path, error));
+	}
+
+	else {
+		cfg::ui_bg_image = path;
+		cfg::ui_bg_style = 2;
+		path.clear();
+	}
+}
+
 static void themeSaveInput()
 {
 	static std::string name{};
@@ -333,6 +366,7 @@ void Menu::tabVisuals()
 		tabItem("map", m_visuals_tab, VisualsTab::MAP);
 		tabItem("other", m_visuals_tab, VisualsTab::OTHER);
 		tabItem("colors", m_visuals_tab, VisualsTab::COLORS);
+		tabItem("menu", m_visuals_tab, VisualsTab::MENU);
 
 		if (m_visuals_tab == VisualsTab::ENTITIES) {
 			pageVisualsEntities();
@@ -348,6 +382,10 @@ void Menu::tabVisuals()
 
 		else if (m_visuals_tab == VisualsTab::COLORS) {
 			pageVisualsColors();
+		}
+
+		else if (m_visuals_tab == VisualsTab::MENU) {
+			pageVisualsMenu();
 		}
 
 		ImGui::EndTabBar();
@@ -1340,8 +1378,19 @@ void Menu::pageVisualsColors()
 				colorPicker("mid", &cfg::color_indicators_mid);
 				colorPicker("bad", &cfg::color_indicators_bad);
 			});
+		}
+		endColumn();
+	}
+	endPage();
+}
 
-			section("colors_ui", "theme", 120.0f, []
+void Menu::pageVisualsMenu()
+{
+	beginPage("group_visuals_menu", m_footer_h);
+	{
+		beginColumn("group_visuals_menu0");
+		{
+			section("theme", "theme", 200.0f, []
 			{
 				colorPicker("base", &cfg::ui_color_base);
 				toggle("custom accent", &cfg::ui_accent_custom);
@@ -1352,6 +1401,21 @@ void Menu::pageVisualsColors()
 				sliderFloat("rounding", &cfg::ui_rounding, 0.0f, 12.0f, "%.0fpx");
 				sliderFloat("border", &cfg::ui_border_size, 0.0f, 3.0f, "%.0fpx");
 				sliderFloat("padding", &cfg::ui_padding, 0.0f, 16.0f, "%.0fpx");
+
+				sep();
+
+				selectSingle("background", &cfg::ui_bg_style, { { "solid", 0 }, { "gradient", 1 }, { "image", 2 } });
+				colorPicker("gradient color", &cfg::ui_color_bg_gradient);
+				selectSingle("gradient direction", &cfg::ui_bg_gradient_dir, { { "top to bottom", 0 }, { "left to right", 1 } });
+
+				if (customWidget("background image", &cfg::ui_bg_image))
+				{
+					backgroundImageInput();
+					settingContext("background image", &cfg::ui_bg_image);
+				}
+
+				sliderFloat("image opacity", &cfg::ui_bg_image_opacity, 0.05f, 1.0f, "%.2f");
+				selectSingle("image fit", &cfg::ui_bg_image_fit, { { "cover", 0 }, { "stretch", 1 } });
 
 				sep();
 
@@ -1368,7 +1432,7 @@ void Menu::pageVisualsColors()
 
 		nextColumn();
 
-		beginColumn("group_visuals_colors2");
+		beginColumn("group_visuals_menu1");
 		{
 			section("menu", "menu", 180.0f, []
 			{

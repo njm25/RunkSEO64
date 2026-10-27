@@ -78,6 +78,8 @@ private:
 	void tabPlayers();
 	void tabBinds();
 	void tabConfigs();
+	void requestLoadConfig(const std::string &name); //asks first when there are unsaved changes
+	void drawConfigSwitcher();
 
 public:
 	void run();

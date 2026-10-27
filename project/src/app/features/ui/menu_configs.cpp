@@ -12,6 +12,60 @@ static int configNameFilter(ImGuiInputTextCallbackData *data)
 	return 0;
 }
 
+void Menu::requestLoadConfig(const std::string &name)
+{
+	const bool dirty{ configs->hasUnsavedChanges() };
+
+	if (dirty && name != configs->active()) {
+		confirm(std::format("discard unsaved changes to '{}' and load '{}'?", configs->active(), name), [name]() { configs->load(name); });
+	}
+
+	else if (dirty) {
+		confirm(std::format("discard unsaved changes and reload '{}'?", name), [name]() { configs->load(name); });
+	}
+
+	else {
+		configs->load(name);
+	}
+}
+
+void Menu::drawConfigSwitcher()
+{
+	const bool dirty{ configs->hasUnsavedChanges() };
+	const std::string label{ configs->active().empty() ? "no config" : std::format("{}{}", configs->active(), dirty ? " *" : "") };
+
+	//looks like the rest of the footer until hovered
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
+	if (ImGui::Selectable(std::format("{}###footer_config", label).c_str(), false, ImGuiSelectableFlags_None, ImGui::CalcTextSize(label.c_str()))) {
+		ImGui::OpenPopup("footer_config_popup");
+	}
+
+	ImGui::PopStyleColor();
+
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+		ImGui::SetTooltip(dirty ? "loaded config, with unsaved changes\nclick to switch" : "click to switch config");
+	}
+
+	if (ImGui::BeginPopup("footer_config_popup"))
+	{
+		const std::vector<std::string> names{ configs->list() };
+
+		if (names.empty()) {
+			ImGui::TextDisabled("no configs saved yet");
+		}
+
+		for (const std::string &name : names)
+		{
+			if (ImGui::MenuItem(name.c_str(), nullptr, name == configs->active())) {
+				requestLoadConfig(name);
+			}
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
 void Menu::tabConfigs()
 {
 	static char new_cfg_name[65]{ '\0' };
@@ -136,19 +190,8 @@ void Menu::tabConfigs()
 
 			const float w{ floorf((ImGui::GetContentRegionAvail().x - style.ItemSpacing.x * 3.0f) / 4.0f) };
 
-			if (ImGui::Button("load", { w, 0.0f }))
-			{
-				if (dirty && !is_active) {
-					confirm(std::format("discard unsaved changes to '{}' and load '{}'?", configs->active(), cfg_name), [cfg_name]() { configs->load(cfg_name); });
-				}
-
-				else if (dirty && is_active) {
-					confirm(std::format("discard unsaved changes and reload '{}'?", cfg_name), [cfg_name]() { configs->load(cfg_name); });
-				}
-
-				else {
-					configs->load(cfg_name);
-				}
+			if (ImGui::Button("load", { w, 0.0f })) {
+				requestLoadConfig(cfg_name);
 			}
 
 			ImGui::SameLine();

@@ -1,7 +1,6 @@
 #include "menu.hpp"
 #include "widgets.hpp"
 #include "ui.hpp"
-#include "configs.hpp"
 
 #include "../cfg.hpp"
 
@@ -187,17 +186,9 @@ void Menu::run()
 			const std::string build{ std::format("build {} ({})", BUILD_NUMBER, BUILD_HASH) };
 
 			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetStyle().WindowPadding.y - ImGui::GetTextLineHeight());
-			ImGui::TextDisabled("Runkseo64");
-
-			if (!configs->active().empty())
-			{
-				ImGui::SameLine();
-				ImGui::TextDisabled("- %s%s", configs->active().c_str(), configs->hasUnsavedChanges() ? " *" : "");
-
-				if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-					ImGui::SetTooltip(configs->hasUnsavedChanges() ? "loaded config, with unsaved changes" : "loaded config");
-				}
-			}
+			ImGui::TextDisabled("Runkseo64 -");
+			ImGui::SameLine();
+			drawConfigSwitcher();
 			ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(build.c_str()).x);
 			ImGui::TextDisabled("%s", build.c_str());
 		}

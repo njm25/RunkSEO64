@@ -1126,6 +1126,7 @@ void Menu::pageVisualsColors()
 
 				sliderFloat("scale", &cfg::ui_scale, 0.75f, 2.0f, "%.2fx");
 				toggle("scroll to edit", &cfg::ui_scroll_edit);
+				toggle("slider buttons", &cfg::ui_slider_buttons);
 			});
 		}
 		endColumn();

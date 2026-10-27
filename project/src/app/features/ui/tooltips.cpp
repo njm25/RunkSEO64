@@ -53,6 +53,7 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 
 	{ "ui_color_base", "base color the menu theme is generated from" },
 	{ "ui_scroll_edit", "scroll over a slider or dropdown to change it, hold shift for bigger steps" },
+	{ "ui_slider_buttons", "show -/+ buttons next to sliders for exact steps, hold shift for bigger ones" },
 	{ "ui_scale", "size of the menu and its text, applied once you let go of the slider" },
 };
 

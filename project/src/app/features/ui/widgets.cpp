@@ -7,6 +7,7 @@
 #include "../cfg.hpp"
 
 #include <optional>
+#include <type_traits>
 
 enum class WidgetType
 {
@@ -960,23 +961,90 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 	return callback;
 }
 
+//slider frame, then -/+ buttons, then the label, all in one group so hovering anywhere on the row counts as the widget
+template <typename T>
+static bool sliderRow(const char *const label, T *const var, const T min, const T max, const char *const fmt, WidgetCtx *const ctx)
+{
+	const ImGuiStyle &style{ ImGui::GetStyle() };
+	const ImGuiIO &io{ ImGui::GetIO() };
+
+	const float width{ ImGui::CalcItemWidth() };
+	const float button{ ImGui::GetFrameHeight() };
+	const bool buttons{ cfg::ui_slider_buttons };
+
+	const std::string_view visible{ std::string_view{ label }.substr(0, std::string_view{ label }.find("##")) };
+	const std::string slider_id{ std::format("##{}", label) };
+
+	const float step{ std::is_same_v<T, int> ? 1.0f : formatStep(fmt, static_cast<float>(min), static_cast<float>(max)) };
+
+	auto nudge = [&](const float steps) {
+		*var = static_cast<T>(stepValue(static_cast<float>(*var), steps * step, step, static_cast<float>(min), static_cast<float>(max)));
+	};
+
+	bool callback{};
+
+	ImGui::PushID(label);
+	ImGui::BeginGroup();
+	{
+		ImGui::SetNextItemWidth(buttons ? std::max(width - (button + style.ItemInnerSpacing.x) * 2.0f, button) : width);
+
+		if constexpr (std::is_same_v<T, int>) {
+			callback = ImGui::SliderInt(slider_id.c_str(), var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp);
+		}
+
+		else {
+			callback = ImGui::SliderFloat(slider_id.c_str(), var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp);
+		}
+
+		if (const float notches{ wheelNotches() }; notches != 0.0f) {
+			nudge(notches);
+			callback = true;
+		}
+
+		if (buttons)
+		{
+			//held buttons keep stepping
+			ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+
+			if (ImGui::Button("-", { button, button })) {
+				nudge(io.KeyShift ? -10.0f : -1.0f);
+				callback = true;
+			}
+
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+
+			if (ImGui::Button("+", { button, button })) {
+				nudge(io.KeyShift ? 10.0f : 1.0f);
+				callback = true;
+			}
+
+			ImGui::PopItemFlag();
+		}
+
+		if (!visible.empty()) {
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+			ImGui::TextUnformatted(visible.data(), visible.data() + visible.size());
+		}
+	}
+	ImGui::EndGroup();
+	ImGui::PopID();
+
+	widgetContext(label, var, ctx);
+
+	return callback;
+}
+
 bool sliderInt(const char *const label, int *const var, int min, int max, const char *const fmt)
 {
 	if (!widgetVisible(label, var)) {
 		return false;
 	}
 
-	bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
-
-	if (const float notches{ wheelNotches() }; notches != 0.0f) {
-		*var = static_cast<int>(stepValue(static_cast<float>(*var), notches, 1.0f, static_cast<float>(min), static_cast<float>(max)));
-		callback = true;
-	}
-
 	WidgetCtxSliderInt ctx{ min, max, fmt };
-	widgetContext(label, var, &ctx);
 
-	return callback;
+	return sliderRow(label, var, min, max, fmt, &ctx);
 }
 
 bool sliderFloat(const char *const label, float *const var, float min, float max, const char *const fmt)
@@ -985,20 +1053,9 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 		return false;
 	}
 
-	bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
-
-	if (const float notches{ wheelNotches() }; notches != 0.0f)
-	{
-		const float step{ formatStep(fmt, min, max) };
-
-		*var = stepValue(*var, notches * step, step, min, max);
-		callback = true;
-	}
-
 	WidgetCtxSliderFloat ctx{ min, max, fmt };
-	widgetContext(label, var, &ctx);
 
-	return callback;
+	return sliderRow(label, var, min, max, fmt, &ctx);
 }
 
 bool colorPicker(const char *const label, Color *const var)

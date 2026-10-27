@@ -177,6 +177,10 @@
     <ClCompile Include="src\app\features\diagnostics\diagnostics_win.cpp" />
     <ClCompile Include="src\app\features\game_info\game_info.cpp" />
     <ClCompile Include="src\app\features\statistics\weapon_names.cpp" />
+    <ClCompile Include="src\app\features\ui\menu_awareness.cpp" />
+    <ClCompile Include="src\app\features\awareness\awareness.cpp" />
+    <ClCompile Include="src\app\features\freecam\freecam.cpp" />
+    <ClCompile Include="src\app\features\skin_changer\skin_changer.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
     <ClCompile Include="src\app\features\ui\tooltips.cpp" />
@@ -384,6 +388,9 @@
     <ClInclude Include="src\app\features\ui\connection.hpp" />
     <ClInclude Include="src\app\features\diagnostics\diagnostics.hpp" />
     <ClInclude Include="src\sdk\tracked\load_report.hpp" />
+    <ClInclude Include="src\app\features\awareness\awareness.hpp" />
+    <ClInclude Include="src\app\features\freecam\freecam.hpp" />
+    <ClInclude Include="src\app\features\skin_changer\skin_changer.hpp" />
     <ClInclude Include="src\shared\utils\insttracker.hpp" />
     <ClInclude Include="src\utils\inst_tracker.hpp" />
     <ClInclude Include="src\shared\utils\math.hpp" />

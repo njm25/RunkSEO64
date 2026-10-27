@@ -82,7 +82,16 @@ static const std::vector<Requirement> &requirements()
 		{ "tp_override_*", { "ClientModeShared_OverrideView" } },
 		{ "tracers_*", { "UTIL_ParticleTracer" } },
 		{ "tracers_active", { "C_TFPlayer_FireBullet", "UTIL_ParticleTracer", "WeaponID_IsSniperRifle" } },
-		{ "vm_override_*", { "C_TFViewModel_CalcViewModelView" } }
+		{ "vm_override_*", { "C_TFViewModel_CalcViewModelView" } },
+
+		{ "callouts_*", { "CEngineVGui_Paint" } },
+		{ "respawn_timers_*", { "CEngineVGui_Paint" } },
+		{ "pack_timers_*", { "CEngineVGui_Paint" } },
+		{ "sniper_warning", { "CEngineVGui_Paint" } },
+		{ "sentry_*", { "CEngineVGui_Paint", "CParticleSystemMgr_DrawRenderCache" } },
+		{ "sticky_*", { "CEngineVGui_Paint", "CParticleSystemMgr_DrawRenderCache" } },
+		{ "freecam_*", { "ClientModeShared_OverrideView" } },
+		{ "skins_*", { "CHLClient_FrameStageNotify" }, { "CAttributeList_SetRuntimeAttributeValue", "CEconItemSchema_GetAttributeDefinition", "CTFItemDefinition_GetValidPaintkits", "CClientState_ForceFullUpdate" } }
 	};
 
 	return reqs;

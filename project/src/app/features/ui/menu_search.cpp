@@ -21,6 +21,7 @@ const std::vector<Menu::SearchPage> &Menu::searchPages()
 		{ "visuals > entities", MenuTab::VISUALS, static_cast<int>(VisualsTab::ENTITIES), &Menu::sectionEspSettings },
 		{ "visuals > map", MenuTab::VISUALS, static_cast<int>(VisualsTab::MAP), &Menu::pageVisualsMap },
 		{ "visuals > other", MenuTab::VISUALS, static_cast<int>(VisualsTab::OTHER), &Menu::pageVisualsOther },
+		{ "visuals > awareness", MenuTab::VISUALS, static_cast<int>(VisualsTab::AWARENESS), &Menu::pageVisualsAwareness },
 		{ "visuals > colors", MenuTab::VISUALS, static_cast<int>(VisualsTab::COLORS), &Menu::pageVisualsColors },
 		{ "visuals > menu", MenuTab::VISUALS, static_cast<int>(VisualsTab::MENU), &Menu::pageVisualsMenu },
 		{ "misc", MenuTab::MISC, 0, &Menu::tabMisc },

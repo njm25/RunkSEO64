@@ -311,6 +311,33 @@ MAKE_CFGVAR(spectator_list_show_respawn_time, true);
 MAKE_CFGVAR(spectator_list_override_firstperson, true);
 MAKE_CFGVAR(spectator_list_firstperson_clr, Color(255, 255, 0, 255));
 
+MAKE_CFGVAR(callouts_active, false);
+MAKE_CFGVAR(callouts_color, Color(255, 200, 60, 255));
+
+MAKE_CFGVAR(respawn_timers_active, false);
+MAKE_CFGVAR(respawn_timers_teammates, false);
+MAKE_CFGVAR(respawn_timers_pos, 0.35f);
+
+MAKE_CFGVAR(pack_timers_active, false);
+
+MAKE_CFGVAR(sentry_ranges_active, false);
+MAKE_CFGVAR(sentry_ranges_only_near, true);
+MAKE_CFGVAR(sentry_warning, true);
+
+MAKE_CFGVAR(sticky_zones_active, false);
+MAKE_CFGVAR(sticky_warning, true);
+
+MAKE_CFGVAR(sniper_warning, false);
+
+MAKE_CFGVAR(freecam_active, false);
+MAKE_CFGVAR(freecam_speed, 600.0f);
+
+MAKE_CFGVAR(skins_active, false);
+MAKE_CFGVAR(skins_primary, 0); //paint kit id, 0 = none
+MAKE_CFGVAR(skins_secondary, 0);
+MAKE_CFGVAR(skins_melee, 0);
+MAKE_CFGVAR(skins_wear, 0); // (0 = factory new) (1 = minimal wear) (2 = field tested) (3 = well worn) (4 = battle scarred)
+
 MAKE_CFGVAR(tracers_active, true);
 MAKE_CFGVAR(tracers_type, 0); // 0 = beams, 1+ = particle type
 MAKE_CFGVAR(tracers_mode, 0); // 0 = use color, 1 = rainbow

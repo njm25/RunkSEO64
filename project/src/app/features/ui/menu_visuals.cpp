@@ -365,6 +365,7 @@ void Menu::tabVisuals()
 		tabItem("entities", m_visuals_tab, VisualsTab::ENTITIES, "visuals");
 		tabItem("map", m_visuals_tab, VisualsTab::MAP, "visuals");
 		tabItem("other", m_visuals_tab, VisualsTab::OTHER, "visuals");
+		tabItem("awareness", m_visuals_tab, VisualsTab::AWARENESS, "visuals");
 		tabItem("colors", m_visuals_tab, VisualsTab::COLORS, "visuals");
 		tabItem("menu", m_visuals_tab, VisualsTab::MENU, "visuals");
 
@@ -386,6 +387,10 @@ void Menu::tabVisuals()
 
 		else if (m_visuals_tab == VisualsTab::MENU) {
 			pageVisualsMenu();
+		}
+
+		else if (m_visuals_tab == VisualsTab::AWARENESS) {
+			pageVisualsAwareness();
 		}
 
 		ImGui::EndTabBar();

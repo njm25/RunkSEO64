@@ -33,6 +33,9 @@
 #include "features/ui/menu.hpp"
 #include "features/ui/binds.hpp"
 #include "features/ui/minimap.hpp"
+#include "features/awareness/awareness.hpp"
+#include "features/freecam/freecam.hpp"
+#include "features/skin_changer/skin_changer.hpp"
 
 #include "features/cfg.hpp"
 
@@ -72,6 +75,7 @@ MAKE_HOOK(
 			tick_base->paint();
 			seed_pred->paint();
 			anti_aim->paint();
+			awareness->paint();
 		}
 		draw->end();
 	}
@@ -117,6 +121,11 @@ MAKE_HOOK(
 			break;
 		}
 
+		case FRAME_NET_UPDATE_POSTDATAUPDATE_START: {
+			skin_changer->apply();
+			break;
+		}
+
 		default: {
 			break;
 		}
@@ -137,6 +146,7 @@ MAKE_HOOK(
 		case FRAME_RENDER_START: {
 			mat_mod->run();
 			mini_map->cache();
+			skin_changer->run();
 			break;
 		}
 
@@ -335,6 +345,17 @@ MAKE_HOOK(
 	void,
 	void *rcx, CViewSetup *pSetup)
 {
+	//dead with freecam on: the game sets up its death cam, then freecam moves it
+	if (C_TFPlayer *const local{ ec->getLocal() }; pSetup && cfg::freecam_active && local && local->deadflag())
+	{
+		CALL_ORIGINAL(rcx, pSetup);
+		freecam->overrideView(pSetup);
+		return;
+	}
+
+	//not flying, the next death starts from the death cam again
+	freecam->overrideView(nullptr);
+
 	if (cfg::tp_override_active && pSetup)
 	{
 		if (C_TFPlayer *const local{ ec->getLocal() })
@@ -589,6 +610,7 @@ MAKE_HOOK(
 		misc->paintPredPath();
 		misc->paintSniperSightlines();
 		misc->paintSitckyMesh();
+		awareness->render();
 		//misc->paintViewVelocity();
 		entity_visuals->runModels();
 		player_data->visual();

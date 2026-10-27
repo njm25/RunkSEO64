@@ -996,6 +996,7 @@ public:
 
 public:
 	NETVAR(int, m_iItemDefinitionIndex, "DT_ScriptCreatedItem");
+	NETVAR_PTR(CAttributeList, m_AttributeList, "DT_ScriptCreatedItem");
 
 public:
 	NETVAR_OFFSET(int, m_iWeaponMode, "DT_TFWeaponBase", "m_iReloadMode", -4);
@@ -1786,6 +1787,12 @@ public:
 	{
 		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bValid"), "DT_PlayerResource", "m_bValid") };
 		return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index);
+	}
+
+	int GetTeam(int index)
+	{
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iTeam"), "DT_PlayerResource", "m_iTeam") };
+		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetUserID(int index)

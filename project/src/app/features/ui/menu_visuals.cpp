@@ -8,45 +8,24 @@ void Menu::tabVisuals()
 {
 	if (ImGui::BeginTabBar("tabbar_visuals"))
 	{
-		enum class VisualTabs {
-			ESP, ENTITIES, MAP, OTHER, COLORS
-		};
+		tabItem("entities", m_visuals_tab, VisualsTab::ENTITIES);
+		tabItem("map", m_visuals_tab, VisualsTab::MAP);
+		tabItem("other", m_visuals_tab, VisualsTab::OTHER);
+		tabItem("colors", m_visuals_tab, VisualsTab::COLORS);
 
-		static VisualTabs tab{ VisualTabs::ESP };
-
-		if (ImGui::BeginTabItem("entities")) {
-			tab = VisualTabs::ENTITIES;
-			ImGui::EndTabItem();
-		}
-
-		if (ImGui::BeginTabItem("map")) {
-			tab = VisualTabs::MAP;
-			ImGui::EndTabItem();
-		}
-
-		if (ImGui::BeginTabItem("other")) {
-			tab = VisualTabs::OTHER;
-			ImGui::EndTabItem();
-		}
-
-		if (ImGui::BeginTabItem("colors")) {
-			tab = VisualTabs::COLORS;
-			ImGui::EndTabItem();
-		}
-
-		if (tab == VisualTabs::ENTITIES) {
+		if (m_visuals_tab == VisualsTab::ENTITIES) {
 			pageVisualsEntities();
 		}
 
-		else if (tab == VisualTabs::MAP) {
+		else if (m_visuals_tab == VisualsTab::MAP) {
 			pageVisualsMap();
 		}
 
-		else if (tab == VisualTabs::OTHER) {
+		else if (m_visuals_tab == VisualsTab::OTHER) {
 			pageVisualsOther();
 		}
 
-		else if (tab == VisualTabs::COLORS) {
+		else if (m_visuals_tab == VisualsTab::COLORS) {
 			pageVisualsColors();
 		}
 

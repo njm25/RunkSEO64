@@ -7,27 +7,14 @@ void Menu::tabAimbot()
 {
 	if (ImGui::BeginTabBar("tabbar_aimbot"))
 	{
-		enum class AimbotTabs {
-			MAIN, VISUALS
-		};
+		tabItem("main", m_aimbot_tab, AimbotTab::MAIN);
+		tabItem("visuals", m_aimbot_tab, AimbotTab::VISUALS);
 
-		static AimbotTabs tab{ AimbotTabs::MAIN };
-
-		if (ImGui::BeginTabItem("main")) {
-			tab = AimbotTabs::MAIN;
-			ImGui::EndTabItem();
-		}
-
-		if (ImGui::BeginTabItem("visuals")) {
-			tab = AimbotTabs::VISUALS;
-			ImGui::EndTabItem();
-		}
-
-		if (tab == AimbotTabs::MAIN) {
+		if (m_aimbot_tab == AimbotTab::MAIN) {
 			pageAimbotMain();
 		}
 
-		else if (tab == AimbotTabs::VISUALS) {
+		else if (m_aimbot_tab == AimbotTab::VISUALS) {
 			pageAimbotVisuals();
 		}
 

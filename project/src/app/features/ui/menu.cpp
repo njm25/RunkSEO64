@@ -6,6 +6,21 @@
 
 #include <build_info.hpp>
 
+void Menu::navigate(const MenuTab tab, const int sub_tab)
+{
+	m_tab = tab;
+
+	if (tab == MenuTab::AIMBOT) {
+		m_aimbot_tab = static_cast<AimbotTab>(sub_tab);
+	}
+
+	else if (tab == MenuTab::VISUALS) {
+		m_visuals_tab = static_cast<VisualsTab>(sub_tab);
+	}
+
+	m_navigate_frames = 2;
+}
+
 void Menu::run()
 {
 	aa_hovered = false;
@@ -17,91 +32,74 @@ void Menu::run()
 		return;
 	}
 
+	if (!m_registered) {
+		registerSections();
+		m_registered = true;
+	}
+
 	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar))
 	{
 		// space reserved at the bottom for the footer
 		m_footer_h = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
 
-		ImGui::SetWindowSize({ 600.0f, 460.0f + m_footer_h }, ImGuiCond_::ImGuiCond_Once);
+		const float search_h{ ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y };
+
+		ImGui::SetWindowSize({ 600.0f, 460.0f + m_footer_h + search_h }, ImGuiCond_::ImGuiCond_Once);
+
+		drawSearchBar();
 
 		if (ImGui::BeginTabBar("tabbar_main"))
 		{
-			enum class Tabs {
-				AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, CONFIGS
-			};
+			tabItem("aimbot", m_tab, MenuTab::AIMBOT);
+			tabItem("automation", m_tab, MenuTab::AUTOMATION);
+			tabItem("exploits", m_tab, MenuTab::EXPLOITS);
+			tabItem("visuals", m_tab, MenuTab::VISUALS);
+			tabItem("misc", m_tab, MenuTab::MISC);
+			tabItem("players", m_tab, MenuTab::PLAYERS);
+			tabItem("configs", m_tab, MenuTab::CONFIGS);
 
-			static Tabs tab{ Tabs::AIMBOT };
-
-			if (ImGui::BeginTabItem("aimbot")) {
-				tab = Tabs::AIMBOT;
-				ImGui::EndTabItem();
+			if (!m_search.empty()) {
+				drawSearchResults();
 			}
 
-			if (ImGui::BeginTabItem("automation")) {
-				tab = Tabs::AUTOMATION;
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("exploits")) {
-				tab = Tabs::EXPLOITS;
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("visuals")) {
-				tab = Tabs::VISUALS;
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("misc")) {
-				tab = Tabs::MISC;
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("players")) {
-				tab = Tabs::PLAYERS;
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("configs")) {
-				tab = Tabs::CONFIGS;
-				ImGui::EndTabItem();
-			}
-
-			switch (tab)
+			else
 			{
-				case Tabs::AIMBOT: {
-					tabAimbot();
-					break;
-				}
+				switch (m_tab)
+				{
+					case MenuTab::AIMBOT: {
+						tabAimbot();
+						break;
+					}
 
-				case Tabs::AUTOMATION: {
-					tabAutomation();
-					break;
-				}
+					case MenuTab::AUTOMATION: {
+						tabAutomation();
+						break;
+					}
 
-				case Tabs::EXPLOITS: {
-					tabExploits();
-					break;
-				}
+					case MenuTab::EXPLOITS: {
+						tabExploits();
+						break;
+					}
 
-				case Tabs::VISUALS: {
-					tabVisuals();
-					break;
-				}
+					case MenuTab::VISUALS: {
+						tabVisuals();
+						break;
+					}
 
-				case Tabs::MISC: {
-					tabMisc();
-					break;
-				}
+					case MenuTab::MISC: {
+						tabMisc();
+						break;
+					}
 
-				case Tabs::PLAYERS: {
-					tabPlayers();
-					break;
-				}
+					case MenuTab::PLAYERS: {
+						tabPlayers();
+						break;
+					}
 
-				case Tabs::CONFIGS: {
-					tabConfigs();
-					break;
+					case MenuTab::CONFIGS: {
+						tabConfigs();
+						break;
+					}
 				}
 			}
 
@@ -128,5 +126,9 @@ void Menu::run()
 		cfg::ui_pos_menu_y = ImGui::GetWindowPos().y;
 
 		ImGui::End();
+	}
+
+	if (m_navigate_frames > 0) {
+		m_navigate_frames--;
 	}
 }

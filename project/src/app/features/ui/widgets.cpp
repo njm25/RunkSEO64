@@ -81,6 +81,7 @@ struct RegisteredSection final
 {
 	std::string key{};
 	std::string title{};
+	std::string path{}; //tab names leading to the section, e.g. "aimbot > main"
 	std::vector<RegisteredWidget> widgets{};
 };
 
@@ -88,6 +89,13 @@ struct RegisteredSection final
 static std::deque<RegisteredSection> registered_sections{};
 static RegisteredSection *cur_section{};
 static std::string cur_page{};
+static std::string cur_path{};
+
+static WidgetMode mode{ WidgetMode::DRAW };
+static std::vector<std::string> search_tokens{};
+static bool search_show_all{}; //section itself matched, so every widget in it is shown
+static bool search_goto{};
+static int search_results{};
 
 static RegisteredSection *findOrAddSection(const char *const id, const char *const title)
 {
@@ -100,7 +108,7 @@ static RegisteredSection *findOrAddSection(const char *const id, const char *con
 		}
 	}
 
-	registered_sections.push_back(RegisteredSection{ key, title });
+	registered_sections.push_back(RegisteredSection{ key, title, cur_path });
 
 	return &registered_sections.back();
 }
@@ -135,6 +143,110 @@ static ConfigVar *findCfgVar(const void *const ptr)
 	const auto it{ cache.find(ptr) };
 
 	return it != cache.end() ? it->second : nullptr;
+}
+
+static std::string toLower(std::string str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+	return str;
+}
+
+//every word of the query has to show up somewhere in the haystack
+static bool matchesSearch(const std::string &haystack)
+{
+	const std::string lower{ toLower(haystack) };
+
+	for (const std::string &token : search_tokens)
+	{
+		if (lower.find(token) == std::string::npos) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static std::string widgetHaystack(const RegisteredSection *const sec, const std::string &label, const ConfigVar *const var)
+{
+	std::string str{ label };
+
+	if (sec) {
+		str += " " + sec->path + " " + sec->title;
+	}
+
+	if (var) {
+		str += " " + var->name();
+	}
+
+	return str;
+}
+
+//called at the top of every widget: registers it, and decides whether it gets drawn in the current mode
+static bool widgetVisible(const char *const label, const void *const var)
+{
+	if (mode == WidgetMode::DRAW) {
+		return true;
+	}
+
+	ConfigVar *const cfg_var{ findCfgVar(var) };
+
+	if (mode == WidgetMode::REGISTER) {
+		registerWidget(label, cfg_var);
+		return false;
+	}
+
+	return search_show_all || matchesSearch(widgetHaystack(cur_section, label, cfg_var));
+}
+
+void setWidgetMode(const WidgetMode new_mode)
+{
+	mode = new_mode;
+
+	if (mode == WidgetMode::SEARCH) {
+		search_results = 0;
+		search_goto = false;
+	}
+}
+
+WidgetMode widgetMode()
+{
+	return mode;
+}
+
+void setSearchQuery(std::string_view query)
+{
+	search_tokens.clear();
+
+	std::string token{};
+
+	for (const char c : toLower(std::string{ query }) + " ")
+	{
+		if (c != ' ') {
+			token += c;
+			continue;
+		}
+
+		if (!token.empty()) {
+			search_tokens.push_back(token);
+			token.clear();
+		}
+	}
+}
+
+void setSearchPath(std::string_view path)
+{
+	cur_path = path;
+}
+
+bool searchGotoClicked()
+{
+	return std::exchange(search_goto, false);
+}
+
+int searchResultCount()
+{
+	return search_results;
 }
 
 //==================================================================================================================================
@@ -604,6 +716,10 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 
 bool toggle(const char *const label, bool *const var)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	const bool callback{ ImGui::Checkbox(label, var) };
 
 	WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
@@ -614,6 +730,10 @@ bool toggle(const char *const label, bool *const var)
 
 bool selectSingle(const char *const label, int *const var, std::vector<std::pair<std::string, int>> vars)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	bool callback{};
 
 	if (ImGui::BeginCombo(label, vars[*var].first.c_str()))
@@ -660,8 +780,21 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 	}
 	
 	//items only get drawn while the combo is open, so register them up front
-	for (const std::pair<std::string, bool *> &var : vars) {
-		registerWidget(std::format("{}: {}", label, var.first).c_str(), findCfgVar(var.second));
+	bool any_visible{};
+
+	for (const std::pair<std::string, bool *> &var : vars)
+	{
+		const std::string item_label{ std::format("{}: {}", label, var.first) };
+
+		registerWidget(item_label.c_str(), findCfgVar(var.second));
+
+		if (widgetVisible(item_label.c_str(), var.second)) {
+			any_visible = true;
+		}
+	}
+
+	if (!any_visible) {
+		return false;
 	}
 
 	if (ImGui::BeginCombo(label, preview.c_str()))
@@ -684,6 +817,10 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 
 bool sliderInt(const char *const label, int *const var, int min, int max, const char *const fmt)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	const bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
 
 	WidgetCtxSliderInt ctx{ min, max, fmt };
@@ -694,6 +831,10 @@ bool sliderInt(const char *const label, int *const var, int min, int max, const 
 
 bool sliderFloat(const char *const label, float *const var, float min, float max, const char *const fmt)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	const bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
 
 	WidgetCtxSliderFloat ctx{ min, max, fmt };
@@ -704,6 +845,10 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 
 bool colorPicker(const char *const label, Color *const var)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	ImVec4 clr{};
 
 	clr.x = static_cast<float>(var->r) / 255.0f;
@@ -735,6 +880,10 @@ bool colorPicker(const char *const label, Color *const var)
 
 bool inputString(const char *const label, std::string *const var, const char *const fmt, int flags)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
 	const bool callback{ ImGui::InputText(label, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var) };
 
 	widgetContext(label, var, nullptr);
@@ -749,33 +898,45 @@ bool inputStringWithHint(const char *const label, std::string *const var, const 
 
 //==================================================================================================================================
 
+//layout only exists while drawing, the other modes just walk the sections
+
 void beginPage(const char *const id, const float bottom_padding)
 {
 	cur_page = id;
 
-	ImGui::BeginChild(id, { 0.0f, -bottom_padding });
+	if (mode == WidgetMode::DRAW) {
+		ImGui::BeginChild(id, { 0.0f, -bottom_padding });
+	}
 }
 
 void endPage()
 {
 	cur_page.clear();
 
-	ImGui::EndChild();
+	if (mode == WidgetMode::DRAW) {
+		ImGui::EndChild();
+	}
 }
 
 void beginColumn(const char *const id)
 {
-	ImGui::BeginChild(id, { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
+	if (mode == WidgetMode::DRAW) {
+		ImGui::BeginChild(id, { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
+	}
 }
 
 void endColumn()
 {
-	ImGui::EndChild();
+	if (mode == WidgetMode::DRAW) {
+		ImGui::EndChild();
+	}
 }
 
 void nextColumn()
 {
-	ImGui::SameLine();
+	if (mode == WidgetMode::DRAW) {
+		ImGui::SameLine();
+	}
 }
 
 static void sectionContext(const RegisteredSection *const sec)
@@ -819,6 +980,63 @@ void section(const char *const id, const char *const title, const float width, c
 
 	RegisteredSection *const sec{ findOrAddSection(id, title) };
 
+	if (mode == WidgetMode::REGISTER)
+	{
+		cur_section = sec;
+		body();
+		cur_section = nullptr;
+
+		return;
+	}
+
+	if (mode == WidgetMode::SEARCH)
+	{
+		const bool title_match{ matchesSearch(sec->path + " " + sec->title) };
+
+		const bool any_match{ title_match || std::any_of(sec->widgets.begin(), sec->widgets.end(), [sec](const RegisteredWidget &w) {
+			return matchesSearch(widgetHaystack(sec, w.label, w.var));
+		}) };
+
+		if (!any_match) {
+			return;
+		}
+
+		search_results++;
+
+		ImGui::BeginChild(sec->key.c_str(), { 0.0f, 0.0f }, ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY);
+		{
+			ImGui::BeginGroup();
+			ImGui::TextDisabled("%s >", sec->path.c_str());
+			ImGui::SameLine();
+			ImGui::TextUnformatted(title);
+			ImGui::EndGroup();
+			sectionContext(sec);
+
+			const float goto_w{ ImGui::CalcTextSize("go to").x + ImGui::GetStyle().FramePadding.x * 2.0f };
+
+			ImGui::SameLine(ImGui::GetContentRegionMax().x - goto_w);
+
+			if (ImGui::SmallButton("go to")) {
+				search_goto = true;
+			}
+
+			ImGui::Separator();
+
+			ImGui::PushItemWidth(100.0f);
+
+			cur_section = sec;
+			search_show_all = title_match;
+			body();
+			search_show_all = false;
+			cur_section = nullptr;
+
+			ImGui::PopItemWidth();
+		}
+		ImGui::EndChild();
+
+		return;
+	}
+
 	ImGui::BeginChild(id, { width, 0.0f }, flags);
 	{
 		ImGui::PushItemWidth(item_width > 0.0f ? item_width : ImGui::GetContentRegionAvail().x);
@@ -838,10 +1056,14 @@ void section(const char *const id, const char *const title, const float width, c
 
 void sep()
 {
-	ImGui::Separator();
+	if (mode == WidgetMode::DRAW) {
+		ImGui::Separator();
+	}
 }
 
 void heading(const char *const text)
 {
-	ImGui::TextUnformatted(text);
+	if (mode == WidgetMode::DRAW) {
+		ImGui::TextUnformatted(text);
+	}
 }

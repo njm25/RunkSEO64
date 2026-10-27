@@ -2,6 +2,13 @@
 
 #include "../../../game/game.hpp"
 
+enum class WidgetMode
+{
+	DRAW,     //normal menu
+	REGISTER, //walk the pages without drawing, filling the section registry
+	SEARCH    //draw only the sections and widgets matching the search query
+};
+
 bool toggle(const char *const label, bool *const var);
 bool selectSingle(const char *const label, int *const var, std::vector<std::pair<std::string, int>> vars);
 bool selectMulti(const char *const label, const std::vector<std::pair<std::string, bool *>> vars);
@@ -24,3 +31,11 @@ void heading(const char *const text);
 //modal yes/cancel prompt, drawn by drawConfirm() once per frame from the menu window
 void confirm(std::string_view msg, const std::function<void()> &on_confirm);
 void drawConfirm();
+
+//search
+void setWidgetMode(const WidgetMode new_mode);
+WidgetMode widgetMode();
+void setSearchQuery(std::string_view query);
+void setSearchPath(std::string_view path);
+bool searchGotoClicked();
+int searchResultCount();

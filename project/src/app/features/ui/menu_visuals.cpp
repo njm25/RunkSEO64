@@ -1440,6 +1440,8 @@ void Menu::pageVisualsMenu()
 				toggle("scroll to edit", &cfg::ui_scroll_edit);
 				toggle("slider buttons", &cfg::ui_slider_buttons);
 				toggle("animations", &cfg::ui_animations);
+				toggle("click sounds", &cfg::ui_sounds);
+				sliderFloat("sound volume", &cfg::ui_sound_volume, 0.0f, 1.0f, "%.2f");
 
 				sep();
 

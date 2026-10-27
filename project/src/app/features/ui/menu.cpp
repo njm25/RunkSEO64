@@ -1,6 +1,7 @@
 #include "menu.hpp"
 #include "widgets.hpp"
 #include "ui.hpp"
+#include "ui_sound.hpp"
 
 #include "../cfg.hpp"
 
@@ -197,6 +198,11 @@ void Menu::run()
 		}
 
 		drawConfirm();
+
+		//any click on something clickable, popups and dropdowns included
+		if (cfg::ui_sounds && open && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsAnyItemHovered()) {
+			playClickSound(cfg::ui_sound_volume);
+		}
 
 		// footer
 		{

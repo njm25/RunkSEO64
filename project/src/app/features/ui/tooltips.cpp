@@ -64,6 +64,8 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "ui_color_accent", "highlight color, used when custom accent is on" },
 	{ "ui_scroll_edit", "scroll over a slider or dropdown to change it, hold shift for bigger steps" },
 	{ "ui_slider_buttons", "show -/+ buttons next to sliders for exact steps, hold shift for bigger ones" },
+	{ "ui_sounds", "play a quiet click when you click something in the menu" },
+	{ "ui_sound_volume", "how loud the click sounds are" },
 	{ "ui_animations", "fade the menu in and out and animate switching tabs" },
 	{ "ui_bg_opacity", "how see-through the menu and its windows are" },
 	{ "ui_fade_unhovered", "fade the whole menu while the mouse isn't over it" },

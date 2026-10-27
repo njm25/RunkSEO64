@@ -29,9 +29,5 @@ StatsLocal currentStatsLocal()
 	local.player_class = player->m_iClass();
 	local.alive = !player->deadflag();
 
-	if (C_TFWeaponBase *const weapon{ player->m_hActiveWeapon()->cast<C_TFWeaponBase>() }) {
-		local.melee = weapon->GetSlot() == 2;
-	}
-
 	return local;
 }

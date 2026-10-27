@@ -395,12 +395,6 @@ MAKE_CFGVAR(color_indicators_mid, Color({ 230, 126, 34, 255 }));
 
 #pragma endregion
 
-#pragma region statistics
-
-MAKE_CFGVAR(stats_active, true);
-
-#pragma endregion
-
 #pragma region notifs
 
 MAKE_CFGVAR(notifs_active, true);

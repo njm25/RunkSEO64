@@ -3,7 +3,6 @@
 #include "ui.hpp"
 
 #include "../statistics/statistics.hpp"
-#include "../cfg.hpp"
 
 static const char *const class_names[stats_class_count]{ "", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer" };
 
@@ -177,7 +176,10 @@ void Menu::tabStatistics()
 		ImGui::EndDisabled();
 
 		ImGui::SameLine();
-		ImGui::Checkbox("track statistics", &cfg::stats_active);
+		//not a config setting, it lives with the stats
+		if (bool active{ statistics->isActive() }; ImGui::Checkbox("track statistics", &active)) {
+			statistics->setActive(active);
+		}
 
 		ImGui::SameLine();
 

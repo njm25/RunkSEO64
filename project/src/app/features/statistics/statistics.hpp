@@ -3,6 +3,7 @@
 #include "../../../game/game.hpp"
 
 #include <array>
+#include <atomic>
 #include <map>
 #include <mutex>
 
@@ -65,7 +66,6 @@ struct StatsLocal final
 	int team{};
 	int player_class{}; //1-9, 0 when unknown
 	bool alive{};
-	bool melee{}; //holding the melee weapon
 	std::string map{};
 };
 
@@ -108,6 +108,9 @@ private:
 	double m_save_timer{};
 	bool m_dirty{};
 
+	//kept in stats.json rather than configs, so loading a config never pauses or resumes tracking
+	std::atomic<bool> m_active{ true };
+
 private:
 	void add(const Stat stat, const double value, const StatsLocal &local);
 	void record(const Stat stat, const double value, const StatsLocal &local);
@@ -130,6 +133,9 @@ public:
 	void run(); //once a frame
 	void save() const;
 	void load();
+
+	bool isActive() const { return m_active; }
+	void setActive(const bool active);
 
 	StatsSnapshot snapshot() const;
 	void resetSession();

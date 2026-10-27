@@ -1,7 +1,6 @@
 #include "statistics.hpp"
 
 #include "../notifs/notifs.hpp"
-#include "../cfg.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -108,6 +107,39 @@ namespace
 	constexpr int OBJ_TELEPORTER{ 1 };
 	constexpr int OBJ_SENTRYGUN{ 2 };
 
+	//the weapon types every melee weapon reports, all-class melees take their class's type.
+	//projectiles thrown by melee weapons (sandman ball, wrap assassin ornament, cleaver) have their own types
+	bool isMeleeWeaponID(const int id)
+	{
+		switch (id)
+		{
+			case TF_WEAPON_BAT:
+			case TF_WEAPON_BAT_WOOD:
+			case TF_WEAPON_BAT_FISH:
+			case TF_WEAPON_BAT_GIFTWRAP:
+			case TF_WEAPON_BOTTLE:
+			case TF_WEAPON_STICKBOMB:
+			case TF_WEAPON_SWORD:
+			case TF_WEAPON_FIREAXE:
+			case TF_WEAPON_BREAKABLE_SIGN:
+			case TF_WEAPON_SLAP:
+			case TF_WEAPON_CLUB:
+			case TF_WEAPON_CROWBAR:
+			case TF_WEAPON_KNIFE:
+			case TF_WEAPON_FISTS:
+			case TF_WEAPON_SHOVEL:
+			case TF_WEAPON_WRENCH:
+			case TF_WEAPON_BONESAW:
+			case TF_WEAPON_HARVESTER_SAW: {
+				return true;
+			}
+
+			default: {
+				return false;
+			}
+		}
+	}
+
 	constexpr int FLAG_PICKUP{ 1 };
 	constexpr int FLAG_CAPTURE{ 2 };
 	constexpr int FLAG_DEFEND{ 3 };
@@ -194,7 +226,7 @@ void Statistics::endRound(const StatsLocal &local)
 
 void Statistics::handleEvent(IGameEvent *const event, const StatsLocal &local)
 {
-	if (!event || !cfg::stats_active || local.userid <= 0) {
+	if (!event || !m_active || local.userid <= 0) {
 		return;
 	}
 
@@ -280,7 +312,7 @@ void Statistics::handleEvent(IGameEvent *const event, const StatsLocal &local)
 				add(Stat::TAUNT_KILLS, 1, local);
 			}
 
-			if (local.melee) {
+			if (isMeleeWeaponID(event->GetInt("weaponid", TF_WEAPON_NONE))) {
 				add(Stat::MELEE_KILLS, 1, local);
 			}
 
@@ -531,7 +563,7 @@ void Statistics::handleEvent(IGameEvent *const event, const StatsLocal &local)
 
 void Statistics::tick(const double dt, const StatsLocal &local)
 {
-	if (!cfg::stats_active || dt <= 0.0) {
+	if (!m_active || dt <= 0.0) {
 		return;
 	}
 
@@ -615,6 +647,7 @@ void Statistics::saveLocked() const
 	nlohmann::json j{};
 
 	j["version"] = 1;
+	j["tracking"] = m_active.load();
 	j["all_time"] = blockToJson(m_all_time);
 
 	for (int c{ 1 }; c < stats_class_count; c++) {
@@ -670,6 +703,7 @@ void Statistics::load()
 
 		file >> j;
 
+		m_active = j.value("tracking", true);
 		m_all_time = blockFromJson(j.value("all_time", nlohmann::json::object()));
 
 		if (j.contains("per_class"))
@@ -718,7 +752,7 @@ bool Statistics::onLoad()
 {
 	load();
 
-	if (cfg::stats_active)
+	if (m_active)
 	{
 		const std::scoped_lock lock{ m_mutex };
 
@@ -753,6 +787,14 @@ void Statistics::run()
 
 	//long gaps (a breakpoint, a hitch while loading) aren't time spent playing
 	tick(std::min(dt, 1.0), currentStatsLocal());
+}
+
+void Statistics::setActive(const bool active)
+{
+	m_active = active;
+
+	//saved straight away so it sticks even if the game closes before the next save
+	save();
 }
 
 StatsSnapshot Statistics::snapshot() const

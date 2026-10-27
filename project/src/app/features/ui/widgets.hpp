@@ -16,6 +16,7 @@ bool sliderInt(const char *const label, int *const var, int min, int max, const 
 bool sliderFloat(const char *const label, float *const var, float min, float max, const char *const fmt = "%.3f");
 bool colorPicker(const char *const label, Color *const var);
 bool inputString(const char *const label, std::string *const var, const char *const fmt = "%s", int flags = 0);
+bool inputKey(int *const var, const bool start_listening = false);
 bool inputStringWithHint(const char *const label, std::string *const var, const char *const hint, const char *const fmt = "%s", int flags = 0);
 
 //layout

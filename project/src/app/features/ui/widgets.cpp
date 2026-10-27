@@ -361,7 +361,7 @@ static std::string formatValue(const ConfigVar *const var, const std::any &val, 
 
 //==================================================================================================================================
 
-bool inputKey(int *const var)
+bool inputKey(int *const var, const bool start_listening)
 {
 	if (!var) {
 		return false;
@@ -369,7 +369,11 @@ bool inputKey(int *const var)
 
 	bool callback{};
 
-	static bool active{};
+	//listening state lives in imgui's storage so several key inputs can be on screen at once
+	ImGuiStorage *const storage{ ImGui::GetStateStorage() };
+	const ImGuiID state_id{ ImGui::GetID("##input_key_listening") };
+
+	bool active{ start_listening || storage->GetBool(state_id) };
 
 	if (!active)
 	{
@@ -428,6 +432,8 @@ bool inputKey(int *const var)
 		}
 	}
 
+	storage->SetBool(state_id, active);
+
 	return callback;
 }
 
@@ -443,21 +449,28 @@ static int resizeCallback(ImGuiInputTextCallbackData *data)
 	return 0;
 }
 
-static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *const ctx, const bool open_bind)
+static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *const ctx, const std::string &name, const std::optional<BindType> open_type)
 {
 	static Bind bind_data{};
 
-	if (open_bind)
+	bool listen{};
+
+	if (open_type)
 	{
 		ImGui::OpenPopup("bind_popup_bind");
 
 		bind_data = Bind{};
 
+		bind_data.name = name;
+		bind_data.type = *open_type;
 		bind_data.val_off = ctx->m_val_off;
 		bind_data.val_on = ctx->m_val_on;
 		bind_data.var = cfg_var;
 		bind_data.cfg_var_name = cfg_var->name();
 		bind_data.appear_in_bindslist = true;
+
+		//straight into waiting for a key
+		listen = true;
 	}
 
 	if (ImGui::BeginPopup("bind_popup_bind"))
@@ -468,7 +481,7 @@ static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *cons
 
 		ImGui::InputTextWithHint("##bind_name", "name", bind_data.name.data(), bind_data.name.capacity() + 1, ImGuiInputTextFlags_CallbackResize, resizeCallback, &bind_data.name);
 
-		inputKey(&bind_data.key);
+		inputKey(&bind_data.key, listen);
 
 		if (ImGui::BeginCombo("##bind_type", bind_data.type == BindType::TOGGLE ? "toggle" : "hold"))
 		{
@@ -686,7 +699,7 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 		ImGui::OpenPopup("widget_popup_context");
 	}
 
-	bool open_bind{};
+	std::optional<BindType> open_bind{};
 
 	if (ImGui::BeginPopup("widget_popup_context"))
 	{
@@ -698,15 +711,37 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 			cfg_var->reset();
 		}
 
-		if (ctx && ImGui::MenuItem("bind")) {
-			open_bind = true;
+		if (ctx)
+		{
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("bind as toggle...")) {
+				open_bind = BindType::TOGGLE;
+			}
+
+			if (ImGui::MenuItem("bind as hold...")) {
+				open_bind = BindType::HOLD;
+			}
 		}
 
 		ImGui::EndPopup();
 	}
 
-	if (ctx) {
-		bindPopup(var, cfg_var, ctx, open_bind);
+	if (ctx)
+	{
+		std::string name{};
+
+		//"melee fov" reads better in the binds list than just "fov"
+		if (open_bind)
+		{
+			name = std::string_view{ label }.substr(0, std::string_view{ label }.find("##"));
+
+			if (cur_section) {
+				name = cur_section->title + " " + name;
+			}
+		}
+
+		bindPopup(var, cfg_var, ctx, name, open_bind);
 	}
 
 	ImGui::PopID();

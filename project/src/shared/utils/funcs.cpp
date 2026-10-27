@@ -174,7 +174,7 @@ std::string utils::getFilePath()
 
 	free(app_data);
 
-	return std::string(path) + "\\seo64\\";
+	return std::string(path) + "\\Runkseo64\\";
 }
 
 std::string utils::keyToStr(const int key)
@@ -216,4 +216,4 @@ std::string utils::keyToStr(const int key)
 			return "unknown";
 		}
 	}
-}
+}

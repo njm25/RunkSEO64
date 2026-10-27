@@ -2,7 +2,7 @@
 
 An updated version of **Seo64**, an internal project for 64-bit Team Fortress 2.
 
-It builds into a DLL (`seo64.dll`) that runs inside the TF2 process. It hooks the Source engine and draws an ImGui overlay on top of the game's D3D9 renderer.
+It builds into a DLL (`Runkseo64.dll`) that runs inside the TF2 process. It hooks the Source engine and draws an ImGui overlay on top of the game's D3D9 renderer.
 
 ## Features
 
@@ -22,7 +22,7 @@ It builds into a DLL (`seo64.dll`) that runs inside the TF2 process. It hooks th
 | `Insert` | Toggle the menu |
 | `F11` | Unload |
 
-Configs are saved to `%APPDATA%\seo64\`.
+Configs are saved to `%APPDATA%\Runkseo64\`.
 
 If signatures, interfaces, or cvars fail to resolve when loading, a message box lists the failures, which usually means a game update broke something.
 
@@ -33,7 +33,7 @@ Requirements:
 - Windows SDK
 - C++20
 
-Open `solution.sln`, select `Release | x64`, and build. Output goes to `output\bin\<Configuration>\seo64.dll`, and intermediates go to `output\build\`. The `output\` folder is gitignored.
+Open `solution.sln`, select `Release | x64`, and build. Output goes to `output\bin\<Configuration>\Runkseo64.dll`, and intermediates go to `output\build\`. The `output\` folder is gitignored.
 
 ## Project layout
 

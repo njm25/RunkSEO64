@@ -47,7 +47,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|x64'">
     <OutDir>$(SolutionDir)output\bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)output\build\$(Configuration)\</IntDir>
-    <TargetName>seo64</TargetName>
+    <TargetName>Runkseo64</TargetName>
     <GenerateManifest>false</GenerateManifest>
     <IncludePath>$(SolutionDir)project\src\shared\libs\freetype\include;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Include;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)project\src\shared\libs\freetype\objs;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(LibraryPath)</LibraryPath>
@@ -55,7 +55,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|x64'">
     <OutDir>$(SolutionDir)output\bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)output\build\$(Configuration)\</IntDir>
-    <TargetName>seo64</TargetName>
+    <TargetName>Runkseo64</TargetName>
     <GenerateManifest>false</GenerateManifest>
     <IncludePath>$(SolutionDir)project\src\shared\libs\freetype\include;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
     <LibraryPath>$(SolutionDir)project\src\shared\libs\freetype\objs;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(LibraryPath)</LibraryPath>
@@ -356,4 +356,4 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
-</Project>
+</Project>

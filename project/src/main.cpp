@@ -12,7 +12,7 @@ constexpr int errc_hooks{ 6 };
 
 void dump_error_string(const std::string& errors, const bool copyToClipboard)
 {
-	MessageBoxA(nullptr, errors.c_str(), "seo64", MB_OK | MB_ICONERROR);
+	MessageBoxA(nullptr, errors.c_str(), "Runkseo64", MB_OK | MB_ICONERROR);
 
 	if ( copyToClipboard )
 	{
@@ -157,7 +157,7 @@ int unload()
 DWORD WINAPI mainThread(LPVOID param)
 {
 	if (const int errc{ load() }) {
-		MessageBoxA(0, std::format("failed to load ({})", errc).c_str(), "seo64", 0);
+		MessageBoxA(0, std::format("failed to load ({})", errc).c_str(), "Runkseo64", 0);
 		FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(param), EXIT_FAILURE);
 	}
 
@@ -166,7 +166,7 @@ DWORD WINAPI mainThread(LPVOID param)
 	}
 
 	if (const int errc{ unload() }) {
-		MessageBoxA(0, std::format("failed to unload ({})", errc).c_str(), "seo64", 0);
+		MessageBoxA(0, std::format("failed to unload ({})", errc).c_str(), "Runkseo64", 0);
 		FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(param), EXIT_FAILURE);
 	}
 
@@ -190,4 +190,4 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 	CloseHandle(main_thread);
 
 	return TRUE;
-}
+}

@@ -41,7 +41,7 @@ void Notifs::add(std::string_view str, const NotifType type)
 	});
 
 	if (cfg::notifs_print_to_con) {
-		i::cvar->ConsoleColorPrintf(clr, std::format("[seo64] {}\n", str).c_str());
+		i::cvar->ConsoleColorPrintf(clr, std::format("[Runkseo64] {}\n", str).c_str());
 	}
 }
 
@@ -104,4 +104,4 @@ void Notifs::run()
 		draw->rectFilled(rect_pos + vec2{ 2.0f, rect_size.y - 5.0f }, { bar_w, 2.0f }, notif.m_clr);
 		draw->string(notif.m_pos, fonts::indicators.get(), notif.m_str, notif.m_clr);
 	}
-}
+}

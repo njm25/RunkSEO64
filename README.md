@@ -22,7 +22,7 @@ It builds into a DLL (`Runkseo64.dll`) that runs inside the TF2 process. It hook
 | `Insert` | Toggle the menu |
 | `F11` | Unload |
 
-Configs are saved to `%APPDATA%\Runkseo64\`.
+Configs are saved to `%APPDATA%\seo64\` (the same folder the original Seo64 used, so existing configs carry over).
 
 If signatures, interfaces, or cvars fail to resolve when loading, a message box lists the failures, which usually means a game update broke something.
 

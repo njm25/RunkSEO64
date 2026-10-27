@@ -2,6 +2,58 @@
 
 #include "../../app/features/notifs/notifs.hpp"
 
+bool ConfigVar::isDefault() const
+{
+	if (m_type_hash == typeid(bool).hash_code()) {
+		return *static_cast<bool *>(m_ptr) == std::any_cast<bool>(m_default);
+	}
+
+	else if (m_type_hash == typeid(int).hash_code()) {
+		return *static_cast<int *>(m_ptr) == std::any_cast<int>(m_default);
+	}
+
+	else if (m_type_hash == typeid(float).hash_code()) {
+		return *static_cast<float *>(m_ptr) == std::any_cast<float>(m_default);
+	}
+
+	else if (m_type_hash == typeid(std::string).hash_code()) {
+		return *static_cast<std::string *>(m_ptr) == std::any_cast<std::string>(m_default);
+	}
+
+	else if (m_type_hash == typeid(Color).hash_code())
+	{
+		const Color cur{ *static_cast<Color *>(m_ptr) };
+		const Color def{ std::any_cast<Color>(m_default) };
+
+		return cur.r == def.r && cur.g == def.g && cur.b == def.b && cur.a == def.a;
+	}
+
+	return true;
+}
+
+void ConfigVar::reset()
+{
+	if (m_type_hash == typeid(bool).hash_code()) {
+		*static_cast<bool *>(m_ptr) = std::any_cast<bool>(m_default);
+	}
+
+	else if (m_type_hash == typeid(int).hash_code()) {
+		*static_cast<int *>(m_ptr) = std::any_cast<int>(m_default);
+	}
+
+	else if (m_type_hash == typeid(float).hash_code()) {
+		*static_cast<float *>(m_ptr) = std::any_cast<float>(m_default);
+	}
+
+	else if (m_type_hash == typeid(std::string).hash_code()) {
+		*static_cast<std::string *>(m_ptr) = std::any_cast<std::string>(m_default);
+	}
+
+	else if (m_type_hash == typeid(Color).hash_code()) {
+		*static_cast<Color *>(m_ptr) = std::any_cast<Color>(m_default);
+	}
+}
+
 void cfg::save(std::string_view name)
 {
 	std::ofstream file{ name.data() };

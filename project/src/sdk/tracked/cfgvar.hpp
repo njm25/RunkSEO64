@@ -2,19 +2,24 @@
 
 #include "../../shared/shared.hpp"
 
+#include <any>
+
 class ConfigVar final : public InstTracker<ConfigVar>
 {
 private:
 	std::string m_name{};
 	void *m_ptr{};
 	size_t m_type_hash{};
+	std::any m_default{};
 
 public:
-	ConfigVar(std::string_view name, void *const ptr, const size_t type_hash) : InstTracker(this)
+	template <typename T>
+	ConfigVar(std::string_view name, T *const ptr) : InstTracker(this)
 	{
 		m_name = name;
 		m_ptr = ptr;
-		m_type_hash = type_hash;
+		m_type_hash = typeid(T).hash_code();
+		m_default = *ptr; //cfg vars are initialized before their ConfigVar, so this is the default value
 	}
 
 public:
@@ -32,11 +37,20 @@ public:
 	{
 		return m_type_hash;
 	}
+
+	const std::any &defaultValue() const
+	{
+		return m_default;
+	}
+
+public:
+	bool isDefault() const;
+	void reset();
 };
 
 #define MAKE_CFGVAR(name, val) \
 namespace cfg { inline auto name{ val }; } \
-namespace make_cfgvar { inline ConfigVar name{ #name, &cfg::name, typeid(cfg::name).hash_code() }; }
+namespace make_cfgvar { inline ConfigVar name{ #name, &cfg::name }; }
 
 namespace cfg
 {

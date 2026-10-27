@@ -1,6 +1,8 @@
 #include "widgets.hpp"
 #include "binds.hpp"
 
+#include "../notifs/notifs.hpp"
+
 enum class WidgetType
 {
 	TOGGLE, SELECT_SINGLE, SLIDER_INT, SLIDER_FLOAT
@@ -64,6 +66,185 @@ struct WidgetCtxSliderFloat final : public WidgetCtx
 		m_fmt = fmt;
 	}
 };
+
+//==================================================================================================================================
+
+
+struct RegisteredWidget final
+{
+	std::string label{};
+	ConfigVar *var{};
+};
+
+struct RegisteredSection final
+{
+	std::string key{};
+	std::string title{};
+	std::vector<RegisteredWidget> widgets{};
+};
+
+//deque so pointers stay valid as sections get added
+static std::deque<RegisteredSection> registered_sections{};
+static RegisteredSection *cur_section{};
+static std::string cur_page{};
+
+static RegisteredSection *findOrAddSection(const char *const id, const char *const title)
+{
+	const std::string key{ cur_page + "/" + id };
+
+	for (RegisteredSection &sec : registered_sections)
+	{
+		if (sec.key == key) {
+			return &sec;
+		}
+	}
+
+	registered_sections.push_back(RegisteredSection{ key, title });
+
+	return &registered_sections.back();
+}
+
+static void registerWidget(const char *const label, ConfigVar *const var)
+{
+	if (!cur_section || !var) {
+		return;
+	}
+
+	for (const RegisteredWidget &w : cur_section->widgets)
+	{
+		if (w.var == var) {
+			return;
+		}
+	}
+
+	cur_section->widgets.push_back(RegisteredWidget{ label, var });
+}
+
+static ConfigVar *findCfgVar(const void *const ptr)
+{
+	static std::unordered_map<const void *, ConfigVar *> cache{};
+
+	if (cache.empty())
+	{
+		for (ConfigVar *const cfg_var : getInsts<ConfigVar>()) {
+			cache[cfg_var->ptr()] = cfg_var;
+		}
+	}
+
+	const auto it{ cache.find(ptr) };
+
+	return it != cache.end() ? it->second : nullptr;
+}
+
+//==================================================================================================================================
+
+static std::string confirm_msg{};
+static std::function<void()> confirm_fn{};
+static bool confirm_open{};
+
+void confirm(std::string_view msg, const std::function<void()> &on_confirm)
+{
+	confirm_msg = msg;
+	confirm_fn = on_confirm;
+	confirm_open = true;
+}
+
+void drawConfirm()
+{
+	if (confirm_open) {
+		ImGui::OpenPopup("##confirm");
+		confirm_open = false;
+	}
+
+	if (ImGui::BeginPopupModal("##confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove))
+	{
+		//keys only count once the prompt is up, so the enter that opened it doesn't also confirm it
+		const bool keys{ !ImGui::IsWindowAppearing() };
+
+		ImGui::TextUnformatted(confirm_msg.c_str());
+
+		ImGui::Separator();
+
+		const float w{ ImGui::CalcTextSize("cancel").x + ImGui::GetStyle().FramePadding.x * 6.0f };
+
+		if (ImGui::Button("yes", { w, 0.0f }) || (keys && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))))
+		{
+			if (confirm_fn) {
+				confirm_fn();
+			}
+
+			confirm_fn = nullptr;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("cancel", { w, 0.0f }) || (keys && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+			confirm_fn = nullptr;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+//==================================================================================================================================
+
+static std::string formatValue(const ConfigVar *const var, const std::any &val, const WidgetCtx *const ctx)
+{
+	const size_t type{ var->hash() };
+
+	if (type == typeid(bool).hash_code()) {
+		return std::any_cast<bool>(val) ? "on" : "off";
+	}
+
+	else if (type == typeid(int).hash_code())
+	{
+		const int i{ std::any_cast<int>(val) };
+
+		if (ctx && ctx->m_type == WidgetType::SELECT_SINGLE)
+		{
+			for (const std::pair<std::string, int> &v : static_cast<const WidgetCtxSelectSingle *>(ctx)->m_vars)
+			{
+				if (v.second == i) {
+					return v.first;
+				}
+			}
+		}
+
+		if (ctx && ctx->m_type == WidgetType::SLIDER_INT)
+		{
+			char buf[64]{};
+			snprintf(buf, sizeof(buf), static_cast<const WidgetCtxSliderInt *>(ctx)->m_fmt, i);
+			return buf;
+		}
+
+		return std::to_string(i);
+	}
+
+	else if (type == typeid(float).hash_code())
+	{
+		const float f{ std::any_cast<float>(val) };
+
+		char buf[64]{};
+		snprintf(buf, sizeof(buf), ctx && ctx->m_type == WidgetType::SLIDER_FLOAT ? static_cast<const WidgetCtxSliderFloat *>(ctx)->m_fmt : "%.2f", f);
+		return buf;
+	}
+
+	else if (type == typeid(std::string).hash_code())
+	{
+		const std::string str{ std::any_cast<std::string>(val) };
+		return str.empty() ? "empty" : std::format("'{}'", str);
+	}
+
+	else if (type == typeid(Color).hash_code())
+	{
+		const Color clr{ std::any_cast<Color>(val) };
+		return std::format("{}, {}, {}, {}", clr.r, clr.g, clr.b, clr.a);
+	}
+
+	return {};
+}
 
 //==================================================================================================================================
 
@@ -149,53 +330,8 @@ static int resizeCallback(ImGuiInputTextCallbackData *data)
 	return 0;
 }
 
-void bindWidget(void *const var, WidgetCtx *const ctx)
+static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *const ctx, const bool open_bind)
 {
-	if (!var || !ctx) {
-		return;
-	}
-
-	auto findCfgVar = [var]() -> ConfigVar *const
-	{
-		for (ConfigVar *const cfg_var : getInsts<ConfigVar>())
-		{
-			if (cfg_var->ptr() != var) {
-				continue;
-			}
-
-			return cfg_var;
-		}
-
-		return nullptr;
-	};
-
-	ConfigVar *const cfg_var{ findCfgVar() };
-
-	if (!cfg_var) {
-		return;
-	}
-	
-	ImGui::PushID(var);
-
-	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		ImGui::OpenPopup("bind_popup_context");
-	}
-
-	bool open_bind{};
-
-	if (ImGui::BeginPopup("bind_popup_context"))
-	{
-		ImGui::Text(cfg_var->name().c_str());
-
-		ImGui::Separator();
-
-		if (ImGui::MenuItem("bind")) {
-			open_bind = true;
-		}
-
-		ImGui::EndPopup();
-	}
-
 	static Bind bind_data{};
 
 	if (open_bind)
@@ -395,6 +531,50 @@ void bindWidget(void *const var, WidgetCtx *const ctx)
 
 		ImGui::EndPopup();
 	}
+}
+
+static void widgetContext(const char *const label, void *const var, WidgetCtx *const ctx)
+{
+	if (!var) {
+		return;
+	}
+
+	ConfigVar *const cfg_var{ findCfgVar(var) };
+
+	if (!cfg_var) {
+		return;
+	}
+
+	registerWidget(label, cfg_var);
+
+	ImGui::PushID(var);
+
+	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		ImGui::OpenPopup("widget_popup_context");
+	}
+
+	bool open_bind{};
+
+	if (ImGui::BeginPopup("widget_popup_context"))
+	{
+		ImGui::TextUnformatted(cfg_var->name().c_str());
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(std::format("reset to default ({})", formatValue(cfg_var, cfg_var->defaultValue(), ctx)).c_str(), nullptr, false, !cfg_var->isDefault())) {
+			cfg_var->reset();
+		}
+
+		if (ctx && ImGui::MenuItem("bind")) {
+			open_bind = true;
+		}
+
+		ImGui::EndPopup();
+	}
+
+	if (ctx) {
+		bindPopup(var, cfg_var, ctx, open_bind);
+	}
 
 	ImGui::PopID();
 }
@@ -405,7 +585,8 @@ bool toggle(const char *const label, bool *const var)
 {
 	const bool callback{ ImGui::Checkbox(label, var) };
 
-	bindWidget(var, std::make_shared<WidgetCtx>(std::make_any<bool>(false), std::make_any<bool>(true)).get());
+	WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
@@ -433,7 +614,8 @@ bool selectSingle(const char *const label, int *const var, std::vector<std::pair
 		ImGui::EndCombo();
 	}
 
-	bindWidget(var, std::make_shared<WidgetCtxSelectSingle>(vars).get());
+	WidgetCtxSelectSingle ctx{ vars };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
@@ -456,6 +638,11 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 		}
 	}
 	
+	//items only get drawn while the combo is open, so register them up front
+	for (const std::pair<std::string, bool *> &var : vars) {
+		registerWidget(std::format("{}: {}", label, var.first).c_str(), findCfgVar(var.second));
+	}
+
 	if (ImGui::BeginCombo(label, preview.c_str()))
 	{
 		for (const std::pair<std::string, bool *> &var : vars)
@@ -464,7 +651,8 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 				*var.second = !*var.second;
 			}
 
-			bindWidget(var.second, std::make_shared<WidgetCtx>(std::make_any<bool>(false), std::make_any<bool>(true)).get());
+			WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
+			widgetContext(std::format("{}: {}", label, var.first).c_str(), var.second, &ctx);
 		}
 
 		ImGui::EndCombo();
@@ -477,7 +665,8 @@ bool sliderInt(const char *const label, int *const var, int min, int max, const 
 {
 	const bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
 
-	bindWidget(var, std::make_shared<WidgetCtxSliderInt>(min, max, fmt).get());
+	WidgetCtxSliderInt ctx{ min, max, fmt };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
@@ -486,7 +675,8 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 {
 	const bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
 
-	bindWidget(var, std::make_shared<WidgetCtxSliderFloat>(min, max, fmt).get());
+	WidgetCtxSliderFloat ctx{ min, max, fmt };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
@@ -500,19 +690,35 @@ bool colorPicker(const char *const label, Color *const var)
 	clr.z = static_cast<float>(var->b) / 255.0f;
 	clr.w = static_cast<float>(var->a) / 255.0f;
 
-	const bool callback{ ImGui::ColorEdit4(label, &clr.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar) };
+	ImGuiColorEditFlags edit_flags{ ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar };
 
-	var->r = static_cast<uint8_t>(clr.x * 255.0f);
-	var->g = static_cast<uint8_t>(clr.y * 255.0f);
-	var->b = static_cast<uint8_t>(clr.z * 255.0f);
-	var->a = static_cast<uint8_t>(clr.w * 255.0f);
+	//imgui's own options popup would take the right click from ours
+	if (findCfgVar(var)) {
+		edit_flags |= ImGuiColorEditFlags_NoOptions;
+	}
+
+	const bool callback{ ImGui::ColorEdit4(label, &clr.x, edit_flags) };
+
+	if (callback)
+	{
+		var->r = static_cast<uint8_t>(clr.x * 255.0f + 0.5f);
+		var->g = static_cast<uint8_t>(clr.y * 255.0f + 0.5f);
+		var->b = static_cast<uint8_t>(clr.z * 255.0f + 0.5f);
+		var->a = static_cast<uint8_t>(clr.w * 255.0f + 0.5f);
+	}
+
+	widgetContext(label, var, nullptr);
 
 	return callback;
 }
 
 bool inputString(const char *const label, std::string *const var, const char *const fmt, int flags)
 {
-	return ImGui::InputText(label, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var);
+	const bool callback{ ImGui::InputText(label, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var) };
+
+	widgetContext(label, var, nullptr);
+
+	return callback;
 }
 
 bool inputStringWithHint(const char *const label, std::string *const var, const char *const hint, const char *const fmt, int flags)
@@ -524,11 +730,15 @@ bool inputStringWithHint(const char *const label, std::string *const var, const 
 
 void beginPage(const char *const id, const float bottom_padding)
 {
+	cur_page = id;
+
 	ImGui::BeginChild(id, { 0.0f, -bottom_padding });
 }
 
 void endPage()
 {
+	cur_page.clear();
+
 	ImGui::EndChild();
 }
 
@@ -547,6 +757,36 @@ void nextColumn()
 	ImGui::SameLine();
 }
 
+static void sectionContext(const RegisteredSection *const sec)
+{
+	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		ImGui::OpenPopup("section_popup_context");
+	}
+
+	if (ImGui::BeginPopup("section_popup_context"))
+	{
+		ImGui::TextUnformatted(sec->title.c_str());
+
+		ImGui::Separator();
+
+		const bool any_changed{ std::any_of(sec->widgets.begin(), sec->widgets.end(), [](const RegisteredWidget &w) { return !w.var->isDefault(); }) };
+
+		if (ImGui::MenuItem("reset section to defaults", nullptr, false, any_changed))
+		{
+			confirm(std::format("reset all '{}' settings to their defaults?", sec->title), [sec]()
+			{
+				for (const RegisteredWidget &w : sec->widgets) {
+					w.var->reset();
+				}
+
+				notifs->message(std::format("reset '{}' to defaults", sec->title));
+			});
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
 bool section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
 {
 	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY };
@@ -556,14 +796,19 @@ bool section(const char *const id, const char *const title, const float width, c
 		flags |= ImGuiChildFlags_AutoResizeX;
 	}
 
+	RegisteredSection *const sec{ findOrAddSection(id, title) };
+
 	ImGui::BeginChild(id, { width, 0.0f }, flags);
 	{
 		ImGui::PushItemWidth(item_width > 0.0f ? item_width : ImGui::GetContentRegionAvail().x);
 
-		ImGui::Text(title);
+		ImGui::TextUnformatted(title);
+		sectionContext(sec);
 		ImGui::Separator();
 
+		cur_section = sec;
 		body();
+		cur_section = nullptr;
 
 		ImGui::PopItemWidth();
 	}
@@ -579,5 +824,5 @@ void sep()
 
 void heading(const char *const text)
 {
-	ImGui::Text(text);
+	ImGui::TextUnformatted(text);
 }

@@ -20,3 +20,7 @@ void nextColumn();
 bool section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width = 100.0f);
 void sep();
 void heading(const char *const text);
+
+//modal yes/cancel prompt, drawn by drawConfirm() once per frame from the menu window
+void confirm(std::string_view msg, const std::function<void()> &on_confirm);
+void drawConfirm();

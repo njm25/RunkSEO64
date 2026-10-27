@@ -105,6 +105,8 @@ void Menu::run()
 			ImGui::EndTabBar();
 		}
 
+		drawConfirm();
+
 		// footer
 		{
 			const std::string build{ std::format("build {} ({})", BUILD_NUMBER, BUILD_HASH) };

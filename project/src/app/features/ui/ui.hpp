@@ -40,6 +40,10 @@ struct ThemeValues final
 	bool accent_custom{};
 	Color accent{};
 
+	float rounding{};
+	float border{ 1.0f };
+	float padding{ 4.0f };
+
 	bool operator==(const ThemeValues &other) const;
 };
 
@@ -114,6 +118,7 @@ public:
 
 private:
 	void setColors(const ThemeValues &theme);
+	void setShape(const ThemeValues &theme);
 
 public:
 	void start();

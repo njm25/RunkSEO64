@@ -53,6 +53,9 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 
 	{ "ui_color_base", "base color the menu theme is generated from" },
 	{ "ui_accent_custom", "use the accent color for checkmarks, sliders, the selected tab and selected items instead of a shade of the base color" },
+	{ "ui_rounding", "how round the corners of windows, sections and buttons are" },
+	{ "ui_border_size", "thickness of the outlines around windows, sections and buttons, 0 for none" },
+	{ "ui_padding", "space between the edge of a window or section and what's inside it" },
 	{ "ui_color_accent", "highlight color, used when custom accent is on" },
 	{ "ui_scroll_edit", "scroll over a slider or dropdown to change it, hold shift for bigger steps" },
 	{ "ui_slider_buttons", "show -/+ buttons next to sliders for exact steps, hold shift for bigger ones" },

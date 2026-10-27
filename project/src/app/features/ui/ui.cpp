@@ -17,6 +17,7 @@ static const Theme preset_themes[]
 	{ "amethyst", { Color{ 110, 70, 140, 255 } }, true },
 	{ "graphite red", { Color{ 75, 75, 80, 255 }, true, Color{ 230, 70, 80, 255 } }, true },
 	{ "graphite blue", { Color{ 75, 75, 80, 255 }, true, Color{ 70, 150, 240, 255 } }, true },
+	{ "soft", { Color{ 80, 85, 100, 255 }, true, Color{ 120, 170, 255, 255 }, 6.0f, 0.0f, 8.0f }, true },
 };
 
 static bool sameColor(const Color a, const Color b)
@@ -37,12 +38,13 @@ static Color colorFromJson(const nlohmann::json &j)
 bool ThemeValues::operator==(const ThemeValues &other) const
 {
 	//the accent only matters when it's in use
-	return sameColor(base, other.base) && accent_custom == other.accent_custom && (!accent_custom || sameColor(accent, other.accent));
+	return sameColor(base, other.base) && accent_custom == other.accent_custom && (!accent_custom || sameColor(accent, other.accent))
+		&& rounding == other.rounding && border == other.border && padding == other.padding;
 }
 
 ThemeValues UI::currentTheme() const
 {
-	return ThemeValues{ cfg::ui_color_base, cfg::ui_accent_custom, cfg::ui_color_accent };
+	return ThemeValues{ cfg::ui_color_base, cfg::ui_accent_custom, cfg::ui_color_accent, cfg::ui_rounding, cfg::ui_border_size, cfg::ui_padding };
 }
 
 void UI::applyTheme(const ThemeValues &values)
@@ -53,6 +55,10 @@ void UI::applyTheme(const ThemeValues &values)
 	if (values.accent_custom) {
 		cfg::ui_color_accent = values.accent;
 	}
+
+	cfg::ui_rounding = values.rounding;
+	cfg::ui_border_size = values.border;
+	cfg::ui_padding = values.padding;
 }
 
 static const FontPreset preset_fonts[]
@@ -232,6 +238,10 @@ void UI::loadThemes()
 				values.accent = colorFromJson(t["accent"]);
 			}
 
+			values.rounding = t.value("rounding", values.rounding);
+			values.border = t.value("border", values.border);
+			values.padding = t.value("padding", values.padding);
+
 			m_themes.push_back(Theme{ name, values, false });
 		}
 	}
@@ -256,6 +266,9 @@ void UI::saveThemes() const
 			{ "color", colorToJson(theme.values.base) },
 			{ "accent_custom", theme.values.accent_custom },
 			{ "accent", colorToJson(theme.values.accent) },
+			{ "rounding", theme.values.rounding },
+			{ "border", theme.values.border },
+			{ "padding", theme.values.padding },
 		});
 	}
 
@@ -636,6 +649,37 @@ void UI::setColors(const ThemeValues &theme)
 	}
 }
 
+//rounding, borders and padding, set every frame so a previewed theme shows its shape too
+void UI::setShape(const ThemeValues &theme)
+{
+	ImGuiStyle &style{ ImGui::GetStyle() };
+
+	const float rounding{ std::clamp(theme.rounding, 0.0f, 12.0f) * m_scale };
+	const float border{ std::clamp(theme.border, 0.0f, 3.0f) };
+	const float padding{ std::clamp(theme.padding, 0.0f, 16.0f) * m_scale };
+
+	style.WindowRounding = rounding;
+	style.ChildRounding = rounding;
+	style.PopupRounding = rounding;
+	style.FrameRounding = rounding;
+	style.TabRounding = rounding;
+	style.GrabRounding = rounding;
+	style.ScrollbarRounding = rounding;
+
+	style.WindowBorderSize = border;
+	style.ChildBorderSize = border;
+	style.PopupBorderSize = border;
+	style.FrameBorderSize = border;
+	style.TabBorderSize = border;
+	style.TabBarBorderSize = border;
+
+	style.WindowPadding = { padding, padding };
+
+	//square corners look crisper without anti-aliasing, round ones look jagged without it
+	style.AntiAliasedFill = rounding > 0.0f;
+	style.AntiAliasedLines = rounding > 0.0f;
+}
+
 void UI::start()
 {
 	if (input_dx->getKey(VK_INSERT).pressed) {
@@ -654,6 +698,7 @@ void UI::start()
 	m_preview_theme.reset();
 
 	setColors(theme);
+	setShape(theme);
 
 	ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = std::clamp(cfg::ui_bg_opacity, 0.2f, 1.0f);
 

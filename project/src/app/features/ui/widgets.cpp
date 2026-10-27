@@ -1401,7 +1401,8 @@ static void sectionContext(const RegisteredSection *const sec)
 
 void section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
 {
-	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY };
+	//padding is kept even with borders turned off, imgui drops it for borderless children otherwise
+	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY };
 
 	//width of 0 fills the available space instead of fitting the contents
 	if (width > 0.0f) {
@@ -1433,7 +1434,7 @@ void section(const char *const id, const char *const title, const float width, c
 
 		search_results++;
 
-		ImGui::BeginChild(sec->key.c_str(), { 0.0f, 0.0f }, ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY);
+		ImGui::BeginChild(sec->key.c_str(), { 0.0f, 0.0f }, ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
 		{
 			ImGui::BeginGroup();
 			ImGui::TextDisabled("%s >", sec->path.c_str());

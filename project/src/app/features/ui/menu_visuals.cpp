@@ -1349,6 +1349,12 @@ void Menu::pageVisualsColors()
 
 				sep();
 
+				sliderFloat("rounding", &cfg::ui_rounding, 0.0f, 12.0f, "%.0fpx");
+				sliderFloat("border", &cfg::ui_border_size, 0.0f, 3.0f, "%.0fpx");
+				sliderFloat("padding", &cfg::ui_padding, 0.0f, 16.0f, "%.0fpx");
+
+				sep();
+
 				if (customWidget("theme")) {
 					themeCombo();
 				}

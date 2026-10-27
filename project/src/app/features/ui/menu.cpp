@@ -125,6 +125,7 @@ void Menu::run()
 			tabItem("misc", m_tab, MenuTab::MISC);
 			tabItem("players", m_tab, MenuTab::PLAYERS);
 			tabItem("binds", m_tab, MenuTab::BINDS);
+			tabItem("statistics", m_tab, MenuTab::STATISTICS);
 			tabItem("configs", m_tab, MenuTab::CONFIGS);
 
 			//fade and slide the page in whenever what's shown changes
@@ -182,6 +183,11 @@ void Menu::run()
 
 					case MenuTab::BINDS: {
 						tabBinds();
+						break;
+					}
+
+					case MenuTab::STATISTICS: {
+						tabStatistics();
 						break;
 					}
 

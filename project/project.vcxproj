@@ -167,6 +167,9 @@
     <ClCompile Include="src\app\features\ui\ui_fonts.cpp" />
     <ClCompile Include="src\app\features\ui\ui_image.cpp" />
     <ClCompile Include="src\app\features\ui\ui_sound.cpp" />
+    <ClCompile Include="src\app\features\ui\menu_statistics.cpp" />
+    <ClCompile Include="src\app\features\statistics\statistics.cpp" />
+    <ClCompile Include="src\app\features\statistics\statistics_game.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
     <ClCompile Include="src\app\features\ui\tooltips.cpp" />
@@ -256,6 +259,7 @@
     <ClInclude Include="src\app\features\ui\ui_fonts.hpp" />
     <ClInclude Include="src\app\features\ui\ui_image.hpp" />
     <ClInclude Include="src\app\features\ui\ui_sound.hpp" />
+    <ClInclude Include="src\app\features\statistics\statistics.hpp" />
     <ClInclude Include="src\shared\libs\stb\stb_image.hpp" />
     <ClInclude Include="src\app\features\player_list\player_list.hpp" />
     <ClInclude Include="src\app\features\strafe_pred\strafe_pred.hpp" />

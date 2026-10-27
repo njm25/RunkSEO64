@@ -4,7 +4,7 @@
 
 enum class MenuTab
 {
-	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, CONFIGS
+	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, STATISTICS, CONFIGS
 };
 
 enum class AimbotTab
@@ -78,6 +78,7 @@ private:
 	void tabMisc();
 	void tabPlayers();
 	void tabBinds();
+	void tabStatistics();
 	void tabConfigs();
 	void requestLoadConfig(const std::string &name); //asks first when there are unsaved changes
 	void drawConfigSwitcher();

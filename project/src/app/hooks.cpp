@@ -29,6 +29,7 @@
 #include "features/auto_reflect/auto_reflect.hpp"
 
 #include "features/ui/ui.hpp"
+#include "features/statistics/statistics.hpp"
 #include "features/ui/menu.hpp"
 #include "features/ui/binds.hpp"
 #include "features/ui/minimap.hpp"
@@ -2424,6 +2425,8 @@ MAKE_HOOK(
 	}
 
 	input_dx->processStart();
+
+	statistics->run();
 
 	ui->start();
 	{

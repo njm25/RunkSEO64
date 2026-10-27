@@ -54,14 +54,8 @@ void ConfigVar::reset()
 	}
 }
 
-void cfg::save(std::string_view name)
+nlohmann::json cfg::toJson()
 {
-	std::ofstream file{ name.data() };
-
-	if (!file.is_open()) {
-		return;
-	}
-
 	nlohmann::json j{};
 
 	for (ConfigVar *const var : getInsts<ConfigVar>())
@@ -101,21 +95,11 @@ void cfg::save(std::string_view name)
 		}
 	}
 
-	file << std::setw(4) << j;
+	return j;
 }
 
-void cfg::load(std::string_view name)
+void cfg::fromJson(const nlohmann::json &j)
 {
-	std::ifstream file{ name.data() };
-
-	if (!file.is_open()) {
-		return;
-	}
-
-	nlohmann::json j{};
-
-	file >> j;
-
 	for (ConfigVar *const var : getInsts<ConfigVar>())
 	{
 		try
@@ -157,4 +141,40 @@ void cfg::load(std::string_view name)
 			notifs->warning(std::format("failed to load config var: {} ({})", var->name(), e.what()));
 		}
 	}
+}
+
+void cfg::save(std::string_view name)
+{
+	std::ofstream file{ name.data() };
+
+	if (!file.is_open()) {
+		return;
+	}
+
+	file << std::setw(4) << toJson();
+}
+
+bool cfg::load(std::string_view name)
+{
+	std::ifstream file{ name.data() };
+
+	if (!file.is_open()) {
+		return false;
+	}
+
+	nlohmann::json j{};
+
+	//a broken file shouldn't take the game down with it
+	try {
+		file >> j;
+	}
+
+	catch (const std::exception &e) {
+		notifs->warning(std::format("failed to read config: {} ({})", name, e.what()));
+		return false;
+	}
+
+	fromJson(j);
+
+	return true;
 }

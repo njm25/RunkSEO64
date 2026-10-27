@@ -69,6 +69,7 @@
     <ClCompile Include="src\app\features\ui\menu_misc.cpp" />
     <ClCompile Include="src\app\features\ui\menu_players.cpp" />
     <ClCompile Include="src\app\features\ui\menu_configs.cpp" />
+    <ClCompile Include="src\app\features\ui\configs.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
     <ClCompile Include="src\app\features\ui\tooltips.cpp" />
@@ -228,6 +229,7 @@
     <ClInclude Include="src\app\features\ui\ui.hpp" />
     <ClInclude Include="src\app\features\ui\widgets.hpp" />
     <ClInclude Include="src\app\features\ui\tooltips.hpp" />
+    <ClInclude Include="src\app\features\ui\configs.hpp" />
     <ClInclude Include="src\shared\libs\daisy\include\daisy.hpp" />
     <ClInclude Include="src\app\features\party_commands\party_commands.hpp" />
     <ClInclude Include="src\app\features\ui\minimap.hpp" />

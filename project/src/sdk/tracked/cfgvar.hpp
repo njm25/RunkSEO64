@@ -54,6 +54,9 @@ namespace make_cfgvar { inline ConfigVar name{ #name, &cfg::name }; }
 
 namespace cfg
 {
+	nlohmann::json toJson();
+	void fromJson(const nlohmann::json &j);
+
 	void save(std::string_view name);
-	void load(std::string_view name);
+	bool load(std::string_view name);
 }

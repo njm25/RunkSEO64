@@ -1006,8 +1006,9 @@ void beginPage(const char *const id, const float bottom_padding)
 {
 	cur_page = id;
 
+	//sections keep their width, so a narrow menu scrolls sideways instead of squashing them
 	if (mode == WidgetMode::DRAW) {
-		ImGui::BeginChild(id, { 0.0f, -bottom_padding });
+		ImGui::BeginChild(id, { 0.0f, -bottom_padding }, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
 	}
 }
 

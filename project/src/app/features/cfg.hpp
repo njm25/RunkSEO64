@@ -413,6 +413,10 @@ MAKE_CFGVAR(ui_scale, 1.0f);
 MAKE_CFGVAR(ui_pos_menu_x, 400.0f);
 MAKE_CFGVAR(ui_pos_menu_y, 200.0f);
 
+//unscaled, so the menu grows with the ui scale
+MAKE_CFGVAR(ui_menu_w, 600.0f);
+MAKE_CFGVAR(ui_menu_h, 500.0f);
+
 MAKE_CFGVAR(ui_pos_binds_x, 20.0f);
 MAKE_CFGVAR(ui_pos_binds_y, 300.0f);
 

@@ -38,14 +38,19 @@ void Menu::run()
 		m_registered = true;
 	}
 
-	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar))
+	const ImVec2 display{ ImGui::GetIO().DisplaySize };
+
+	ImGui::SetNextWindowSizeConstraints({ scaled(480.0f), scaled(320.0f) }, { std::max(display.x, scaled(480.0f)), std::max(display.y, scaled(320.0f)) });
+
+	//same as the position below, the saved size wins unless the window is being resized
+	if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		ImGui::SetNextWindowSize({ scaled(cfg::ui_menu_w), scaled(cfg::ui_menu_h) });
+	}
+
+	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar))
 	{
 		// space reserved at the bottom for the footer
 		m_footer_h = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
-
-		const float search_h{ ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y };
-
-		ImGui::SetWindowSize({ scaled(600.0f), scaled(460.0f) + m_footer_h + search_h }, ImGuiCond_::ImGuiCond_Once);
 
 		drawSearchBar();
 
@@ -142,8 +147,11 @@ void Menu::run()
 		cfg::ui_pos_menu_x = ImGui::GetWindowPos().x;
 		cfg::ui_pos_menu_y = ImGui::GetWindowPos().y;
 
-		ImGui::End();
+		cfg::ui_menu_w = ImGui::GetWindowWidth() / ui->scale();
+		cfg::ui_menu_h = ImGui::GetWindowHeight() / ui->scale();
 	}
+
+	ImGui::End();
 
 	if (m_navigate_frames > 0) {
 		m_navigate_frames--;

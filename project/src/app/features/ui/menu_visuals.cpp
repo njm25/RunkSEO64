@@ -146,7 +146,7 @@ void Menu::pageVisualsEntities()
 {
 	const std::shared_lock<std::shared_mutex> lock(entity_visuals->getMutex());
 
-	ImGui::BeginChild("group_entities", { 0.0f, -m_footer_h });
+	ImGui::BeginChild("group_entities", { 0.0f, -m_footer_h }, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
 	{
 		static EVGroup *temp_group{};
 

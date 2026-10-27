@@ -816,6 +816,38 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 
 //==================================================================================================================================
 
+//scrolling over a hovered slider or combo nudges it, returns the notches scrolled (shift for 10x)
+static float wheelNotches()
+{
+	if (!cfg::ui_scroll_edit || mode != WidgetMode::DRAW || ImGui::IsItemActive() || !ImGui::IsItemHovered()) {
+		return 0.0f;
+	}
+
+	//claim the wheel while hovered so the page doesn't scroll along (shift+wheel scrolls sideways)
+	ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+	ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelX);
+
+	const ImGuiIO &io{ ImGui::GetIO() };
+
+	return io.MouseWheel * (io.KeyShift ? 10.0f : 1.0f);
+}
+
+//smallest step the slider's format can show, "%.2f" -> 0.01
+static float formatStep(const char *const fmt, const float min, const float max)
+{
+	if (const char *const dot{ fmt ? strstr(fmt, "%.") : nullptr }; dot && isdigit(static_cast<unsigned char>(dot[2]))) {
+		return std::pow(10.0f, -static_cast<float>(atoi(dot + 2)));
+	}
+
+	return (max - min) / 100.0f;
+}
+
+static float stepValue(const float val, const float delta, const float step, const float min, const float max)
+{
+	//snapping to the step keeps repeated nudges from drifting
+	return std::clamp(std::round((val + delta) / step) * step, min, max);
+}
+
 bool toggle(const char *const label, bool *const var)
 {
 	if (!widgetVisible(label, var)) {
@@ -855,6 +887,17 @@ bool selectSingle(const char *const label, int *const var, std::vector<std::pair
 		}
 
 		ImGui::EndCombo();
+	}
+
+	if (const float notches{ wheelNotches() }; notches != 0.0f)
+	{
+		//scrolling up picks the previous option, like a list
+		const int next{ std::clamp(*var + (notches > 0.0f ? -1 : 1), 0, static_cast<int>(vars.size()) - 1) };
+
+		if (next != *var) {
+			*var = next;
+			callback = true;
+		}
 	}
 
 	WidgetCtxSelectSingle ctx{ vars };
@@ -923,7 +966,12 @@ bool sliderInt(const char *const label, int *const var, int min, int max, const 
 		return false;
 	}
 
-	const bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+	bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+
+	if (const float notches{ wheelNotches() }; notches != 0.0f) {
+		*var = static_cast<int>(stepValue(static_cast<float>(*var), notches, 1.0f, static_cast<float>(min), static_cast<float>(max)));
+		callback = true;
+	}
 
 	WidgetCtxSliderInt ctx{ min, max, fmt };
 	widgetContext(label, var, &ctx);
@@ -937,7 +985,15 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 		return false;
 	}
 
-	const bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+	bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+
+	if (const float notches{ wheelNotches() }; notches != 0.0f)
+	{
+		const float step{ formatStep(fmt, min, max) };
+
+		*var = stepValue(*var, notches * step, step, min, max);
+		callback = true;
+	}
 
 	WidgetCtxSliderFloat ctx{ min, max, fmt };
 	widgetContext(label, var, &ctx);

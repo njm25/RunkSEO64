@@ -52,6 +52,7 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "region_selector_active", "only matchmake into regions that aren't disabled below" },
 
 	{ "ui_color_base", "base color the menu theme is generated from" },
+	{ "ui_scroll_edit", "scroll over a slider or dropdown to change it, hold shift for bigger steps" },
 	{ "ui_scale", "size of the menu and its text, applied once you let go of the slider" },
 };
 

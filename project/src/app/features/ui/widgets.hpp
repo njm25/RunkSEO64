@@ -22,6 +22,9 @@ bool inputString(const char *const label, std::string *const var, const char *co
 bool inputKey(int *const var, const bool start_listening = false);
 bool inputStringWithHint(const char *const label, std::string *const var, const char *const hint, const char *const fmt = "%s", int flags = 0);
 
+//for widgets drawn with plain imgui inside a section: registers the label for search and says whether to draw it
+bool customWidget(const char *const label);
+
 //layout
 void beginPage(const char *const id, const float bottom_padding);
 void endPage();

@@ -5,6 +5,8 @@
 #include "../notifs/notifs.hpp"
 #include "../cfg.hpp"
 
+#include <optional>
+
 enum class WidgetType
 {
 	TOGGLE, SELECT_SINGLE, SLIDER_INT, SLIDER_FLOAT
@@ -114,15 +116,16 @@ static RegisteredSection *findOrAddSection(const char *const id, const char *con
 	return &registered_sections.back();
 }
 
+//var is null for custom widgets that aren't backed by a cfg var, those are only there to be searchable
 static void registerWidget(const char *const label, ConfigVar *const var)
 {
-	if (!cur_section || !var) {
+	if (!cur_section) {
 		return;
 	}
 
 	for (const RegisteredWidget &w : cur_section->widgets)
 	{
-		if (w.var == var) {
+		if (var ? w.var == var : (!w.var && w.label == label)) {
 			return;
 		}
 	}
@@ -198,6 +201,11 @@ static bool widgetVisible(const char *const label, const void *const var)
 	}
 
 	return search_show_all || matchesSearch(widgetHaystack(cur_section, label, cfg_var));
+}
+
+bool customWidget(const char *const label)
+{
+	return widgetVisible(label, nullptr);
 }
 
 void setWidgetMode(const WidgetMode new_mode)
@@ -1044,14 +1052,17 @@ static void sectionContext(const RegisteredSection *const sec)
 
 		ImGui::Separator();
 
-		const bool any_changed{ std::any_of(sec->widgets.begin(), sec->widgets.end(), [](const RegisteredWidget &w) { return !w.var->isDefault(); }) };
+		const bool any_changed{ std::any_of(sec->widgets.begin(), sec->widgets.end(), [](const RegisteredWidget &w) { return w.var && !w.var->isDefault(); }) };
 
 		if (ImGui::MenuItem("reset section to defaults", nullptr, false, any_changed))
 		{
 			confirm(std::format("reset all '{}' settings to their defaults?", sec->title), [sec]()
 			{
-				for (const RegisteredWidget &w : sec->widgets) {
-					w.var->reset();
+				for (const RegisteredWidget &w : sec->widgets)
+				{
+					if (w.var) {
+						w.var->reset();
+					}
 				}
 
 				notifs->message(std::format("reset '{}' to defaults", sec->title));

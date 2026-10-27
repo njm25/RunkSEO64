@@ -1,9 +1,134 @@
 #include "ui.hpp"
 
+#include "../notifs/notifs.hpp"
 #include "../cfg.hpp"
+
+static const Theme preset_themes[]
+{
+	{ "default", Color{ 100, 100, 100, 255 }, true },
+	{ "midnight", Color{ 60, 80, 140, 255 }, true },
+	{ "ocean", Color{ 40, 110, 130, 255 }, true },
+	{ "forest", Color{ 60, 120, 70, 255 }, true },
+	{ "amber", Color{ 150, 110, 40, 255 }, true },
+	{ "crimson", Color{ 140, 50, 60, 255 }, true },
+	{ "rose", Color{ 150, 80, 110, 255 }, true },
+	{ "amethyst", Color{ 110, 70, 140, 255 }, true },
+};
+
+static bool sameColor(const Color a, const Color b)
+{
+	return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+void UI::loadThemes()
+{
+	m_themes.assign(std::begin(preset_themes), std::end(preset_themes));
+
+	std::ifstream file{ utils::getFilePath() + "themes.json" };
+
+	if (!file.is_open()) {
+		return;
+	}
+
+	try
+	{
+		nlohmann::json j{};
+
+		file >> j;
+
+		for (const nlohmann::json &t : j)
+		{
+			const std::string name{ t["name"].get<std::string>() };
+
+			if (findTheme(name)) {
+				continue;
+			}
+
+			m_themes.push_back(Theme{ name, Color{ t["color"][0], t["color"][1], t["color"][2], t["color"][3] }, false });
+		}
+	}
+
+	catch (const std::exception &e) {
+		notifs->warning(std::format("failed to load themes ({})", e.what()));
+	}
+}
+
+void UI::saveThemes() const
+{
+	nlohmann::json j = nlohmann::json::array();
+
+	for (const Theme &theme : m_themes)
+	{
+		if (theme.preset) {
+			continue;
+		}
+
+		j.push_back({ { "name", theme.name }, { "color", { theme.color.r, theme.color.g, theme.color.b, theme.color.a } } });
+	}
+
+	std::ofstream file{ utils::getFilePath() + "themes.json" };
+
+	file << std::setw(4) << j;
+}
+
+const Theme *UI::findTheme(std::string_view name) const
+{
+	for (const Theme &theme : m_themes)
+	{
+		if (theme.name == name) {
+			return &theme;
+		}
+	}
+
+	return nullptr;
+}
+
+std::string UI::themeName(const Color clr) const
+{
+	for (const Theme &theme : m_themes)
+	{
+		if (sameColor(theme.color, clr)) {
+			return theme.name;
+		}
+	}
+
+	return "custom";
+}
+
+void UI::saveTheme(const std::string &name, const Color clr)
+{
+	for (Theme &theme : m_themes)
+	{
+		if (theme.name != name) {
+			continue;
+		}
+
+		//presets stay as they are
+		if (theme.preset) {
+			return;
+		}
+
+		theme.color = clr;
+		saveThemes();
+
+		return;
+	}
+
+	m_themes.push_back(Theme{ name, clr, false });
+	saveThemes();
+}
+
+void UI::deleteTheme(const std::string &name)
+{
+	m_themes.erase(std::remove_if(m_themes.begin(), m_themes.end(), [&name](const Theme &theme) { return !theme.preset && theme.name == name; }), m_themes.end());
+
+	saveThemes();
+}
 
 bool UI::onLoad()
 {
+	loadThemes();
+
 	if (!ImGui::CreateContext()) {
 		return false;
 	}
@@ -185,7 +310,9 @@ void UI::start()
 	float sat{};
 	float val{};
 
-	utils::rgbToHSV(cfg::ui_color_base, hue, sat, val);
+	utils::rgbToHSV(m_preview_color.value_or(cfg::ui_color_base), hue, sat, val);
+
+	m_preview_color.reset();
 
 	setColors(hue, sat, val);
 

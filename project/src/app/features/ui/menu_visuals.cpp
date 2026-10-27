@@ -1,8 +1,98 @@
 #include "menu.hpp"
 #include "widgets.hpp"
+#include "ui.hpp"
 
+#include "../notifs/notifs.hpp"
 #include "../entity_visuals/entity_visuals.hpp"
 #include "../cfg.hpp"
+
+static ImVec4 toVec4(const Color clr)
+{
+	return { clr.r / 255.0f, clr.g / 255.0f, clr.b / 255.0f, clr.a / 255.0f };
+}
+
+//hovering a theme previews it on the whole menu, right click deletes saved ones
+static void themeCombo()
+{
+	const std::string current{ ui->themeName(cfg::ui_color_base) };
+
+	if (ImGui::BeginCombo("theme", current.c_str(), ImGuiComboFlags_HeightLarge))
+	{
+		const float swatch{ ImGui::GetTextLineHeight() };
+
+		std::string to_delete{};
+
+		for (const Theme &theme : ui->getThemes())
+		{
+			ImGui::PushID(theme.name.c_str());
+
+			ImGui::ColorButton("##swatch", toVec4(theme.color), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { swatch, swatch });
+			ImGui::SameLine();
+
+			if (ImGui::Selectable(theme.name.c_str(), theme.name == current)) {
+				cfg::ui_color_base = theme.color;
+			}
+
+			if (ImGui::IsItemHovered()) {
+				ui->previewColor(theme.color);
+			}
+
+			if (!theme.preset && ImGui::BeginPopupContextItem("theme_popup_context"))
+			{
+				if (ImGui::MenuItem("delete")) {
+					to_delete = theme.name;
+				}
+
+				ImGui::EndPopup();
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndCombo();
+
+		if (!to_delete.empty()) {
+			confirm(std::format("delete the theme '{}'?", to_delete), [to_delete]() { ui->deleteTheme(to_delete); });
+		}
+	}
+}
+
+static void themeSaveInput()
+{
+	static std::string name{};
+
+	inputStringWithHint("##theme_name", &name, "save as theme");
+
+	if (!(ImGui::IsItemDeactivated() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) || name.empty()) {
+		return;
+	}
+
+	const Theme *const existing{ ui->findTheme(name) };
+
+	if (existing && existing->preset) {
+		notifs->warning(std::format("'{}' is a built in theme", name));
+		return;
+	}
+
+	const std::string theme_name{ name };
+	const Color clr{ cfg::ui_color_base };
+
+	auto save = [theme_name, clr]()
+	{
+		ui->saveTheme(theme_name, clr);
+		notifs->message(std::format("saved theme '{}'", theme_name));
+	};
+
+	if (existing) {
+		confirm(std::format("overwrite the theme '{}'?", theme_name), save);
+	}
+
+	else {
+		save();
+	}
+
+	name.clear();
+}
 
 void Menu::tabVisuals()
 {
@@ -1023,6 +1113,14 @@ void Menu::pageVisualsColors()
 			section("colors_ui", "ui", 120.0f, []
 			{
 				colorPicker("base", &cfg::ui_color_base);
+
+				if (customWidget("theme")) {
+					themeCombo();
+				}
+
+				if (customWidget("save as theme")) {
+					themeSaveInput();
+				}
 			});
 		}
 		endColumn();

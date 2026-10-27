@@ -74,6 +74,15 @@ StatsLocal currentStatsLocal();
 
 constexpr int stats_class_count{ 10 }; //indexed by tf class, 0 unused
 
+//weapon_names.cpp, null for an unknown index
+const char *weaponName(const int def_index);
+
+//what per weapon kills are stored under: "#<item def index>" for real weapons, the kill icon for buildings and the world
+std::string weaponKey(const int def_index, std::string_view kill_icon);
+
+//"#18" -> "Rocket Launcher", kill icons get tidied up
+std::string weaponDisplayName(std::string_view key);
+
 //a copy of everything, for drawing without holding the lock
 struct StatsSnapshot final
 {
@@ -81,7 +90,7 @@ struct StatsSnapshot final
 	StatBlock session{};
 	std::array<StatBlock, stats_class_count> per_class{};
 	std::map<std::string, StatBlock> per_map{};
-	std::map<std::string, double> per_weapon{}; //kills by kill icon name
+	std::map<std::string, double> per_weapon{}; //kills by weaponKey()
 
 	int current_streak{};
 	double current_life{};

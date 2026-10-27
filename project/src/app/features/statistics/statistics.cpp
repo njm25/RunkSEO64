@@ -246,6 +246,7 @@ void Statistics::handleEvent(IGameEvent *const event, const StatsLocal &local)
 		const int flags{ event->GetInt("death_flags") };
 		const int crit{ event->GetInt("crit_type") };
 		const std::string weapon{ event->GetString("weapon") };
+		const int weapon_def{ event->GetInt("weapon_def_index", -1) };
 
 		//a dead ringer "death" isn't one, for either side
 		const bool feign{ (flags & DEATH_FEIGN_DEATH) != 0 };
@@ -291,8 +292,8 @@ void Statistics::handleEvent(IGameEvent *const event, const StatsLocal &local)
 		{
 			add(Stat::KILLS, 1, local);
 
-			if (!weapon.empty()) {
-				m_per_weapon[weapon]++;
+			if (const std::string key{ weaponKey(weapon_def, weapon) }; !key.empty()) {
+				m_per_weapon[key]++;
 			}
 
 			if (custom == CUSTOM_HEADSHOT || custom == CUSTOM_PENETRATE_HEADSHOT || custom == CUSTOM_HEADSHOT_DECAPITATION) {
@@ -605,6 +606,46 @@ void Statistics::tick(const double dt, const StatsLocal &local)
 }
 
 //--------------------------------------------------------------------------------------------------
+
+std::string weaponKey(const int def_index, std::string_view kill_icon)
+{
+	//sentries, the world and the like still report whatever weapon you were holding
+	const bool not_a_weapon{ kill_icon.starts_with("obj_") || kill_icon == "world" || kill_icon == "player" || kill_icon == "trigger_hurt" };
+
+	if (def_index >= 0 && !not_a_weapon && weaponName(def_index)) {
+		return std::format("#{}", def_index);
+	}
+
+	return std::string{ kill_icon };
+}
+
+std::string weaponDisplayName(std::string_view key)
+{
+	if (key.starts_with('#'))
+	{
+		const int def_index{ atoi(std::string{ key.substr(1) }.c_str()) };
+
+		if (const char *const name{ weaponName(def_index) }) {
+			return name;
+		}
+
+		return std::format("item {}", def_index);
+	}
+
+	std::string name{ key };
+
+	for (const std::string_view prefix : { "tf_projectile_", "tf_weapon_", "obj_" })
+	{
+		if (name.starts_with(prefix)) {
+			name = name.substr(prefix.size());
+			break;
+		}
+	}
+
+	std::replace(name.begin(), name.end(), '_', ' ');
+
+	return name;
+}
 
 static std::string statsPath()
 {

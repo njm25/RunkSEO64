@@ -425,13 +425,16 @@ void Menu::tabStatistics()
 			{
 				std::vector<std::pair<std::string, std::array<double, 2>>> rows{};
 
+				//different items can share a name (every class's shotgun), those are one row
+				std::map<std::string, double> by_name{};
 				double total{};
 
-				for (const auto &[weapon, kills] : snap.per_weapon) {
+				for (const auto &[key, kills] : snap.per_weapon) {
+					by_name[weaponDisplayName(key)] += kills;
 					total += kills;
 				}
 
-				for (const auto &[weapon, kills] : snap.per_weapon) {
+				for (const auto &[weapon, kills] : by_name) {
 					rows.push_back({ weapon, { 0.0, kills } });
 				}
 

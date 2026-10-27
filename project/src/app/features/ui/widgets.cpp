@@ -1058,35 +1058,246 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 	return sliderRow(label, var, min, max, fmt, &ctx);
 }
 
+static ImVec4 colorToVec4(const Color clr)
+{
+	return { clr.r / 255.0f, clr.g / 255.0f, clr.b / 255.0f, clr.a / 255.0f };
+}
+
+static Color vec4ToColor(const ImVec4 &clr)
+{
+	return
+	{
+		static_cast<uint8_t>(clr.x * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.y * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.z * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.w * 255.0f + 0.5f)
+	};
+}
+
+static bool sameColor(const Color a, const Color b)
+{
+	return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+std::string colorToHex(const Color clr)
+{
+	return std::format("#{:02X}{:02X}{:02X}{:02X}", clr.r, clr.g, clr.b, clr.a);
+}
+
+//"#RRGGBB" or "#RRGGBBAA", the # is optional
+std::optional<Color> colorFromHex(std::string_view hex)
+{
+	while (!hex.empty() && std::isspace(static_cast<unsigned char>(hex.front()))) {
+		hex.remove_prefix(1);
+	}
+
+	while (!hex.empty() && std::isspace(static_cast<unsigned char>(hex.back()))) {
+		hex.remove_suffix(1);
+	}
+
+	if (hex.starts_with("#")) {
+		hex.remove_prefix(1);
+	}
+
+	if ((hex.size() != 6 && hex.size() != 8) || hex.find_first_not_of("0123456789abcdefABCDEF") != std::string_view::npos) {
+		return std::nullopt;
+	}
+
+	auto byte = [&hex](const size_t i) {
+		return static_cast<uint8_t>(std::stoi(std::string{ hex.substr(i * 2, 2) }, nullptr, 16));
+	};
+
+	return Color{ byte(0), byte(1), byte(2), hex.size() == 8 ? byte(3) : static_cast<uint8_t>(255) };
+}
+
+//colors picked recently, newest first
+static std::deque<Color> recent_colors{};
+
+static void addRecentColor(const Color clr)
+{
+	recent_colors.erase(std::remove_if(recent_colors.begin(), recent_colors.end(), [clr](const Color c) { return sameColor(c, clr); }), recent_colors.end());
+	recent_colors.push_front(clr);
+
+	if (recent_colors.size() > 10) {
+		recent_colors.pop_back();
+	}
+}
+
+//row of clickable swatches, returns the one clicked
+static std::optional<Color> swatchRow(const char *const id, const std::vector<std::pair<Color, std::string>> &swatches)
+{
+	std::optional<Color> picked{};
+
+	const float size{ ImGui::GetFrameHeight() * 0.8f };
+	const float row_w{ ImGui::GetContentRegionAvail().x };
+
+	ImGui::PushID(id);
+
+	float x{};
+
+	for (size_t i{}; i < swatches.size(); i++)
+	{
+		const auto &[clr, name] = swatches[i];
+
+		if (i > 0)
+		{
+			//wrap when the next swatch wouldn't fit
+			if (x + ImGui::GetStyle().ItemSpacing.x + size <= row_w) {
+				ImGui::SameLine();
+				x += ImGui::GetStyle().ItemSpacing.x;
+			}
+
+			else {
+				x = 0.0f;
+			}
+		}
+
+		ImGui::PushID(static_cast<int>(i));
+
+		if (ImGui::ColorButton("##swatch", colorToVec4(clr), ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { size, size })) {
+			picked = clr;
+		}
+
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+			ImGui::SetTooltip("%s", name.empty() ? colorToHex(clr).c_str() : std::format("{}\n{}", name, colorToHex(clr)).c_str());
+		}
+
+		ImGui::PopID();
+
+		x += size;
+	}
+
+	ImGui::PopID();
+
+	return picked;
+}
+
 bool colorPicker(const char *const label, Color *const var)
 {
 	if (!widgetVisible(label, var)) {
 		return false;
 	}
 
-	ImVec4 clr{};
+	//the color being edited and what it was when its popup opened, to know when to add it to the recent colors
+	static const Color *editing{};
+	static Color edit_start{};
 
-	clr.x = static_cast<float>(var->r) / 255.0f;
-	clr.y = static_cast<float>(var->g) / 255.0f;
-	clr.z = static_cast<float>(var->b) / 255.0f;
-	clr.w = static_cast<float>(var->a) / 255.0f;
+	bool callback{};
 
-	ImGuiColorEditFlags edit_flags{ ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar };
+	const std::string_view visible{ std::string_view{ label }.substr(0, std::string_view{ label }.find("##")) };
 
-	//imgui's own options popup would take the right click from ours
-	if (findCfgVar(var)) {
-		edit_flags |= ImGuiColorEditFlags_NoOptions;
-	}
+	ImGui::PushID(var);
 
-	const bool callback{ ImGui::ColorEdit4(label, &clr.x, edit_flags) };
-
-	if (callback)
+	ImGui::BeginGroup();
 	{
-		var->r = static_cast<uint8_t>(clr.x * 255.0f + 0.5f);
-		var->g = static_cast<uint8_t>(clr.y * 255.0f + 0.5f);
-		var->b = static_cast<uint8_t>(clr.z * 255.0f + 0.5f);
-		var->a = static_cast<uint8_t>(clr.w * 255.0f + 0.5f);
+		if (ImGui::ColorButton("##color", colorToVec4(*var), ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip))
+		{
+			ImGui::OpenPopup("color_popup");
+
+			editing = var;
+			edit_start = *var;
+		}
+
+		if (!visible.empty()) {
+			ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+			ImGui::TextUnformatted(visible.data(), visible.data() + visible.size());
+		}
 	}
+	ImGui::EndGroup();
+
+	if (ImGui::BeginPopup("color_popup"))
+	{
+		ImGui::PushItemWidth(scaled(200.0f));
+
+		ImVec4 clr{ colorToVec4(*var) };
+		const ImVec4 original{ colorToVec4(edit_start) };
+
+		//the original swatch beside the picker reverts when clicked
+		if (ImGui::ColorPicker4("##picker", &clr.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHex, &original.x)) {
+			*var = vec4ToColor(clr);
+			callback = true;
+		}
+
+		ImGui::PopItemWidth();
+
+		if (ImGui::Button("copy hex")) {
+			ImGui::SetClipboardText(colorToHex(*var).c_str());
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("paste hex"))
+		{
+			const char *const clipboard{ ImGui::GetClipboardText() };
+
+			if (const std::optional<Color> pasted{ colorFromHex(clipboard ? clipboard : "") }) {
+				*var = *pasted;
+				callback = true;
+			}
+
+			else {
+				notifs->warning("clipboard doesn't contain a hex color");
+			}
+		}
+
+		if (!recent_colors.empty())
+		{
+			ImGui::Separator();
+			ImGui::TextDisabled("recent");
+
+			std::vector<std::pair<Color, std::string>> swatches{};
+
+			for (const Color clr : recent_colors) {
+				swatches.push_back({ clr, "" });
+			}
+
+			if (const std::optional<Color> picked{ swatchRow("recent", swatches) }) {
+				*var = *picked;
+				callback = true;
+			}
+		}
+
+		//every other color setting, so matching colors is one click
+		std::vector<std::pair<Color, std::string>> others{};
+
+		for (ConfigVar *const cfg_var : getInsts<ConfigVar>())
+		{
+			if (cfg_var->ptr() == var || cfg_var->hash() != typeid(Color).hash_code()) {
+				continue;
+			}
+
+			const Color other{ *static_cast<Color *>(cfg_var->ptr()) };
+
+			if (std::none_of(others.begin(), others.end(), [other](const auto &o) { return sameColor(o.first, other); })) {
+				others.push_back({ other, cfg_var->name() });
+			}
+		}
+
+		if (!others.empty())
+		{
+			ImGui::Separator();
+			ImGui::TextDisabled("other colors");
+
+			if (const std::optional<Color> picked{ swatchRow("others", others) }) {
+				*var = *picked;
+				callback = true;
+			}
+		}
+
+		ImGui::EndPopup();
+	}
+
+	//popup just closed
+	else if (editing == var)
+	{
+		if (!sameColor(*var, edit_start)) {
+			addRecentColor(*var);
+		}
+
+		editing = nullptr;
+	}
+
+	ImGui::PopID();
 
 	widgetContext(label, var, nullptr);
 

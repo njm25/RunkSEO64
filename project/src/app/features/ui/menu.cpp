@@ -22,6 +22,23 @@ void Menu::navigate(const MenuTab tab, const int sub_tab)
 	m_navigate_frames = 2;
 }
 
+static float easeOut(const float t)
+{
+	return 1.0f - std::pow(1.0f - std::clamp(t, 0.0f, 1.0f), 3.0f);
+}
+
+//moves towards the target over `duration` seconds, or jumps there with animations off
+static float animate(const float cur, const float target, const float duration)
+{
+	if (!cfg::ui_animations) {
+		return target;
+	}
+
+	const float step{ ImGui::GetIO().DeltaTime / duration };
+
+	return cur < target ? std::min(cur + step, target) : std::max(cur - step, target);
+}
+
 void Menu::run()
 {
 	aa_hovered = false;
@@ -29,7 +46,13 @@ void Menu::run()
 	m_aa_hover_time_prev = m_aa_hover_time;
 	m_aa_hover_time = 0.0f;
 
-	if (!ui->isOpen()) {
+	const bool open{ ui->isOpen() };
+
+	//keeps drawing while it fades out after being closed
+	m_open_anim = animate(m_open_anim, open ? 1.0f : 0.0f, 0.15f);
+
+	if (m_open_anim <= 0.0f) {
+		m_tab_key = -1;
 		return;
 	}
 
@@ -47,8 +70,30 @@ void Menu::run()
 
 	ImGui::SetNextWindowSizeConstraints({ scaled(480.0f), scaled(320.0f) }, { std::max(display.x, scaled(480.0f)), std::max(display.y, scaled(320.0f)) });
 
-	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar))
+	//fade out while the mouse is somewhere else, but not while a dropdown or popup from the menu is in use
+	const bool in_use{ m_hovered || ImGui::IsAnyItemActive() || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) };
+
+	m_fade = animate(m_fade, cfg::ui_fade_unhovered && !in_use ? std::clamp(cfg::ui_fade_opacity, 0.1f, 1.0f) : 1.0f, 0.2f);
+
+	//eases in when opening, drops off quickly when closing
+	const float open_e{ open ? easeOut(m_open_anim) : m_open_anim * m_open_anim };
+
+	//slides up a little as it opens
+	const float slide{ (1.0f - open_e) * scaled(12.0f) };
+
+	ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * open_e * m_fade);
+
+	ImGuiWindowFlags window_flags{ ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar };
+
+	//closing, just fading out
+	if (!open) {
+		window_flags |= ImGuiWindowFlags_NoInputs;
+	}
+
+	if (ImGui::Begin("Runkseo64", nullptr, window_flags))
 	{
+		m_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
 		// space reserved at the bottom for the footer
 		m_footer_h = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
 
@@ -64,6 +109,21 @@ void Menu::run()
 			tabItem("players", m_tab, MenuTab::PLAYERS);
 			tabItem("binds", m_tab, MenuTab::BINDS);
 			tabItem("configs", m_tab, MenuTab::CONFIGS);
+
+			//fade and slide the page in whenever what's shown changes
+			const int tab_key{ m_search.empty() ? static_cast<int>(m_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) : -2 };
+
+			if (tab_key != m_tab_key) {
+				m_tab_anim = m_tab_key == -1 ? 1.0f : 0.0f; //not on the first frame, the open animation covers that
+				m_tab_key = tab_key;
+			}
+
+			m_tab_anim = animate(m_tab_anim, 1.0f, 0.15f);
+
+			const float tab_e{ easeOut(m_tab_anim) };
+
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * tab_e);
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (1.0f - tab_e) * scaled(6.0f));
 
 			if (!m_search.empty()) {
 				drawSearchResults();
@@ -115,6 +175,8 @@ void Menu::run()
 				}
 			}
 
+			ImGui::PopStyleVar();
+
 			ImGui::EndTabBar();
 		}
 
@@ -142,20 +204,24 @@ void Menu::run()
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			keepOnScreen(cfg::ui_pos_menu_x, cfg::ui_pos_menu_y, ImGui::GetWindowSize());
-			ImGui::SetWindowPos({ cfg::ui_pos_menu_x, cfg::ui_pos_menu_y });
+			ImGui::SetWindowPos({ cfg::ui_pos_menu_x, cfg::ui_pos_menu_y + slide });
 		}
 
-		cfg::ui_pos_menu_x = ImGui::GetWindowPos().x;
-		cfg::ui_pos_menu_y = ImGui::GetWindowPos().y;
+		//only taken from the window while dragging, so a reset or loaded config isn't overwritten,
+		//and the open slide (which imgui rounds to whole pixels) never creeps into the saved position
+		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+		{
+			cfg::ui_pos_menu_x = ImGui::GetWindowPos().x;
+			cfg::ui_pos_menu_y = ImGui::GetWindowPos().y - slide;
 
-		//only taken from the window while dragging, so a reset or loaded config isn't overwritten by the old size
-		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			cfg::ui_menu_w = ImGui::GetWindowWidth() / ui->scale();
 			cfg::ui_menu_h = ImGui::GetWindowHeight() / ui->scale();
 		}
 	}
 
 	ImGui::End();
+
+	ImGui::PopStyleVar();
 
 	if (m_navigate_frames > 0) {
 		m_navigate_frames--;

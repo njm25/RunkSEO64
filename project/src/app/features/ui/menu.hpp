@@ -34,6 +34,13 @@ private:
 	int m_navigate_frames{}; //tab bars apply a forced selection a frame late, so it's held for a couple of frames
 
 private:
+	float m_open_anim{}; //0 closed, 1 fully open
+	float m_fade{ 1.0f }; //fade while the mouse is elsewhere
+	bool m_hovered{};
+	float m_tab_anim{ 1.0f };
+	int m_tab_key{ -1 }; //what's being shown, a change restarts the tab animation
+
+private:
 	std::string m_search{};
 	bool m_registered{};
 

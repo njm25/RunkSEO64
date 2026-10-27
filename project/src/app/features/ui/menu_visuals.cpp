@@ -1140,6 +1140,15 @@ void Menu::pageVisualsColors()
 				sliderFloat("scale", &cfg::ui_scale, 0.75f, 2.0f, "%.2fx");
 				toggle("scroll to edit", &cfg::ui_scroll_edit);
 				toggle("slider buttons", &cfg::ui_slider_buttons);
+				toggle("animations", &cfg::ui_animations);
+
+				sep();
+
+				sliderFloat("background opacity", &cfg::ui_bg_opacity, 0.2f, 1.0f, "%.2f");
+				toggle("fade when not hovered", &cfg::ui_fade_unhovered);
+				sliderFloat("faded opacity", &cfg::ui_fade_opacity, 0.1f, 1.0f, "%.2f");
+
+				sep();
 
 				if (customWidget("reset layout"))
 				{

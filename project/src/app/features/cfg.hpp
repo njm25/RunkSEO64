@@ -411,6 +411,10 @@ MAKE_CFGVAR(ui_color_base, Color({ 100, 100, 100, 255 }));
 MAKE_CFGVAR(ui_scale, 1.0f);
 MAKE_CFGVAR(ui_scroll_edit, true);
 MAKE_CFGVAR(ui_slider_buttons, true);
+MAKE_CFGVAR(ui_bg_opacity, 1.0f);
+MAKE_CFGVAR(ui_fade_unhovered, false);
+MAKE_CFGVAR(ui_fade_opacity, 0.5f);
+MAKE_CFGVAR(ui_animations, true);
 
 MAKE_CFGVAR(ui_pos_menu_x, 400.0f);
 MAKE_CFGVAR(ui_pos_menu_y, 200.0f);

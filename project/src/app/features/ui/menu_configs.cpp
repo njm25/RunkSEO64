@@ -41,7 +41,7 @@ void Menu::tabConfigs()
 		clearName();
 	};
 
-	auto import = [&]()
+	auto importConfig = [&]()
 	{
 		if (!name_error.empty()) {
 			return;
@@ -80,7 +80,7 @@ void Menu::tabConfigs()
 		ImGui::SameLine();
 
 		if (ImGui::Button("import", { button_w, 0.0f })) {
-			import();
+			importConfig();
 		}
 
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) {

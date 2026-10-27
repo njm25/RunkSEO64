@@ -7,6 +7,8 @@
 #include "../entity_visuals/entity_visuals.hpp"
 #include "../cfg.hpp"
 
+#include <build_info.hpp>
+
 void Menu::run()
 {
 	aa_hovered = false;
@@ -17,7 +19,10 @@ void Menu::run()
 
 	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar))
 	{
-		ImGui::SetWindowSize({ 600.0f, 460.0f }, ImGuiCond_::ImGuiCond_Once);
+		// space reserved at the bottom for the footer
+		const float footer_h{ ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y };
+
+		ImGui::SetWindowSize({ 600.0f, 460.0f + footer_h }, ImGuiCond_::ImGuiCond_Once);
 
 		if (ImGui::BeginTabBar("tabbar_main"))
 		{
@@ -84,7 +89,7 @@ void Menu::run()
 
 					if (tab == AimbotTabs::MAIN)
 					{
-						ImGui::BeginChild("group_aimbot_main");
+						ImGui::BeginChild("group_aimbot_main", { 0.0f, -footer_h });
 						{
 							ImGui::BeginChild("group_aimbot_main0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 							{
@@ -251,7 +256,7 @@ void Menu::run()
 
 					else if (tab == AimbotTabs::VISUALS)
 					{
-						ImGui::BeginChild("group_aimbot_visuals");
+						ImGui::BeginChild("group_aimbot_visuals", { 0.0f, -footer_h });
 						{
 							ImGui::BeginChild("group_aimbot_visuals0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 							{
@@ -388,7 +393,7 @@ void Menu::run()
 
 			else if (tab == Tabs::AUTOMATION)
 			{
-				ImGui::BeginChild("group_automation");
+				ImGui::BeginChild("group_automation", { 0.0f, -footer_h });
 				{
 					ImGui::BeginChild("group_automation0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 					{
@@ -555,7 +560,7 @@ void Menu::run()
 
 			else if (tab == Tabs::EXPLOITS)
 			{
-				ImGui::BeginChild("group_exploits");
+				ImGui::BeginChild("group_exploits", { 0.0f, -footer_h });
 				{
 					ImGui::BeginChild("group_exploits0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 					{
@@ -789,7 +794,7 @@ void Menu::run()
 					{
 						const std::shared_lock<std::shared_mutex> lock(entity_visuals->getMutex());
 
-						ImGui::BeginChild("group_entities");
+						ImGui::BeginChild("group_entities", { 0.0f, -footer_h });
 						{
 							static EVGroup *temp_group{};
 
@@ -1480,7 +1485,7 @@ void Menu::run()
 
 					else if (tab == VisualTabs::MAP)
 					{
-						ImGui::BeginChild("group_map");
+						ImGui::BeginChild("group_map", { 0.0f, -footer_h });
 						{
 							ImGui::BeginChild("group_map0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 							{
@@ -1553,7 +1558,7 @@ void Menu::run()
 
 					else if (tab == VisualTabs::OTHER)
 					{
-						ImGui::BeginChild("group_visuals_other");
+						ImGui::BeginChild("group_visuals_other", { 0.0f, -footer_h });
 						{
 							ImGui::BeginChild("group_visuals_other0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 							{
@@ -1839,7 +1844,7 @@ void Menu::run()
 
 					else if (tab == VisualTabs::COLORS)
 					{
-						ImGui::BeginChild("group_visuals_colors");
+						ImGui::BeginChild("group_visuals_colors", { 0.0f, -footer_h });
 						{
 							ImGui::BeginChild("group_visuals_colors0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 							{
@@ -1944,7 +1949,7 @@ void Menu::run()
 
 			else if (tab == Tabs::MISC)
 			{
-				ImGui::BeginChild("group_misc");
+				ImGui::BeginChild("group_misc", { 0.0f, -footer_h });
 				{
 					ImGui::BeginChild("group_misc0", { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
 					{
@@ -2076,7 +2081,7 @@ void Menu::run()
 
 			else if (tab == Tabs::PLAYERS)
 			{
-				ImGui::BeginChild("group_player_list");
+				ImGui::BeginChild("group_player_list", { 0.0f, -footer_h });
 				{
 					ImGui::BeginChild("group_player_list_tags", { 200.0f, 0.0f }, ImGuiChildFlags_Border);
 					{
@@ -2405,6 +2410,16 @@ void Menu::run()
 			}
 
 			ImGui::EndTabBar();
+		}
+
+		// footer
+		{
+			const std::string build{ std::format("build {} ({})", BUILD_NUMBER, BUILD_HASH) };
+
+			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetStyle().WindowPadding.y - ImGui::GetTextLineHeight());
+			ImGui::TextDisabled("Runkseo64");
+			ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(build.c_str()).x);
+			ImGui::TextDisabled("%s", build.c_str());
 		}
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {

@@ -1134,9 +1134,16 @@ void Menu::pageVisualsColors()
 				if (customWidget("save as theme")) {
 					themeSaveInput();
 				}
+			});
+		}
+		endColumn();
 
-				sep();
+		nextColumn();
 
+		beginColumn("group_visuals_colors2");
+		{
+			section("menu", "menu", 180.0f, []
+			{
 				sliderFloat("scale", &cfg::ui_scale, 0.75f, 2.0f, "%.2fx");
 				toggle("scroll to edit", &cfg::ui_scroll_edit);
 				toggle("slider buttons", &cfg::ui_slider_buttons);

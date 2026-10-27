@@ -477,6 +477,7 @@ void Binds::paint()
 		}
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			keepOnScreen(cfg::ui_pos_binds_x, cfg::ui_pos_binds_y, ImGui::GetWindowSize());
 			ImGui::SetWindowPos({ cfg::ui_pos_binds_x, cfg::ui_pos_binds_y });
 		}
 

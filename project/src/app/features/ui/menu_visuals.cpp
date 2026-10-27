@@ -57,6 +57,19 @@ static void themeCombo()
 	}
 }
 
+//every window back where it starts out, for when one ends up off screen
+static void resetLayout()
+{
+	for (ConfigVar *const var : { &make_cfgvar::ui_pos_menu_x, &make_cfgvar::ui_pos_menu_y, &make_cfgvar::ui_menu_w, &make_cfgvar::ui_menu_h,
+		&make_cfgvar::ui_pos_binds_x, &make_cfgvar::ui_pos_binds_y, &make_cfgvar::ui_pos_minimap_x, &make_cfgvar::ui_pos_minimap_y,
+		&make_cfgvar::spectator_list_x, &make_cfgvar::spectator_list_y })
+	{
+		var->reset();
+	}
+
+	notifs->message("reset window layout");
+}
+
 static void themeSaveInput()
 {
 	static std::string name{};
@@ -1127,6 +1140,17 @@ void Menu::pageVisualsColors()
 				sliderFloat("scale", &cfg::ui_scale, 0.75f, 2.0f, "%.2fx");
 				toggle("scroll to edit", &cfg::ui_scroll_edit);
 				toggle("slider buttons", &cfg::ui_slider_buttons);
+
+				if (customWidget("reset layout"))
+				{
+					if (ImGui::Button("reset layout", { ImGui::CalcItemWidth(), 0.0f })) {
+						resetLayout();
+					}
+
+					if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+						ImGui::SetTooltip("move the menu, binds list and minimap back to their default spots and sizes");
+					}
+				}
 			});
 		}
 		endColumn();

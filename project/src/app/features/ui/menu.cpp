@@ -40,12 +40,12 @@ void Menu::run()
 
 	const ImVec2 display{ ImGui::GetIO().DisplaySize };
 
-	ImGui::SetNextWindowSizeConstraints({ scaled(480.0f), scaled(320.0f) }, { std::max(display.x, scaled(480.0f)), std::max(display.y, scaled(320.0f)) });
-
-	//same as the position below, the saved size wins unless the window is being resized
+	//the saved size wins unless the window is being resized
 	if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 		ImGui::SetNextWindowSize({ scaled(cfg::ui_menu_w), scaled(cfg::ui_menu_h) });
 	}
+
+	ImGui::SetNextWindowSizeConstraints({ scaled(480.0f), scaled(320.0f) }, { std::max(display.x, scaled(480.0f)), std::max(display.y, scaled(320.0f)) });
 
 	if (ImGui::Begin("Runkseo64", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar))
 	{
@@ -141,14 +141,18 @@ void Menu::run()
 		}
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			keepOnScreen(cfg::ui_pos_menu_x, cfg::ui_pos_menu_y, ImGui::GetWindowSize());
 			ImGui::SetWindowPos({ cfg::ui_pos_menu_x, cfg::ui_pos_menu_y });
 		}
 
 		cfg::ui_pos_menu_x = ImGui::GetWindowPos().x;
 		cfg::ui_pos_menu_y = ImGui::GetWindowPos().y;
 
-		cfg::ui_menu_w = ImGui::GetWindowWidth() / ui->scale();
-		cfg::ui_menu_h = ImGui::GetWindowHeight() / ui->scale();
+		//only taken from the window while dragging, so a reset or loaded config isn't overwritten by the old size
+		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			cfg::ui_menu_w = ImGui::GetWindowWidth() / ui->scale();
+			cfg::ui_menu_h = ImGui::GetWindowHeight() / ui->scale();
+		}
 	}
 
 	ImGui::End();

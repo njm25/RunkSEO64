@@ -64,3 +64,17 @@ inline float scaled(const float size)
 {
 	return size * ui->scale();
 }
+
+//pulls a saved window position back so at least a strip of the window stays on screen, e.g. after a resolution change
+inline void keepOnScreen(float &x, float &y, const ImVec2 &size)
+{
+	const ImVec2 display{ ImGui::GetIO().DisplaySize };
+	const float margin{ scaled(40.0f) };
+
+	if (display.x <= 0.0f || display.y <= 0.0f) {
+		return;
+	}
+
+	x = std::clamp(x, margin - size.x, std::max(display.x - margin, 0.0f));
+	y = std::clamp(y, 0.0f, std::max(display.y - margin, 0.0f));
+}

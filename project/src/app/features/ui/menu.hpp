@@ -9,6 +9,8 @@ public:
 
 private:
 	float m_footer_h{};
+	float m_aa_hover_time{};
+	float m_aa_hover_time_prev{};
 
 private:
 	void tabAimbot();

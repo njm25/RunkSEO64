@@ -1,5 +1,6 @@
 #include "widgets.hpp"
 #include "binds.hpp"
+#include "tooltips.hpp"
 
 #include "../notifs/notifs.hpp"
 
@@ -547,6 +548,26 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 
 	registerWidget(label, cfg_var);
 
+	const char *const tooltip{ getTooltip(cfg_var->name()) };
+	const bool slider{ ctx && (ctx->m_type == WidgetType::SLIDER_INT || ctx->m_type == WidgetType::SLIDER_FLOAT) };
+
+	if ((tooltip || slider) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+	{
+		ImGui::BeginTooltip();
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
+
+		if (tooltip) {
+			ImGui::TextUnformatted(tooltip);
+		}
+
+		if (slider) {
+			ImGui::TextDisabled("ctrl+click to type a value");
+		}
+
+		ImGui::PopTextWrapPos();
+		ImGui::EndTooltip();
+	}
+
 	ImGui::PushID(var);
 
 	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -787,7 +808,7 @@ static void sectionContext(const RegisteredSection *const sec)
 	}
 }
 
-bool section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
+void section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
 {
 	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY };
 
@@ -813,8 +834,6 @@ bool section(const char *const id, const char *const title, const float width, c
 		ImGui::PopItemWidth();
 	}
 	ImGui::EndChild();
-
-	return ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 }
 
 void sep()

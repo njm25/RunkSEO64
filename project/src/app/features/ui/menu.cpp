@@ -10,6 +10,9 @@ void Menu::run()
 {
 	aa_hovered = false;
 
+	m_aa_hover_time_prev = m_aa_hover_time;
+	m_aa_hover_time = 0.0f;
+
 	if (!ui->isOpen()) {
 		return;
 	}

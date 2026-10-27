@@ -2,9 +2,11 @@
 
 #include "../../../game/game.hpp"
 
+#include "widgets.hpp"
+
 enum class MenuTab
 {
-	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, STATISTICS, CONFIGS
+	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, STATISTICS, CONFIGS, DIAGNOSTICS
 };
 
 enum class AimbotTab
@@ -45,8 +47,9 @@ private:
 	bool m_registered{};
 
 private:
+	//parent is the main tab a sub tab sits under, for context highlighting
 	template <typename T>
-	void tabItem(const char *const label, T &cur, const T value);
+	void tabItem(const char *const label, T &cur, const T value, const char *const parent = nullptr);
 
 public:
 	void navigate(const MenuTab tab, const int sub_tab = 0);
@@ -80,6 +83,7 @@ private:
 	void tabBinds();
 	void tabStatistics();
 	void tabConfigs();
+	void tabDiagnostics();
 	void requestLoadConfig(const std::string &name); //asks first when there are unsaved changes
 	void drawConfigSwitcher();
 
@@ -91,11 +95,22 @@ MAKE_UNIQUE(Menu, menu);
 
 //only used by the tab files
 template <typename T>
-void Menu::tabItem(const char *const label, T &cur, const T value)
+void Menu::tabItem(const char *const label, T &cur, const T value, const char *const parent)
 {
 	const bool navigating{ m_navigate_frames > 0 };
+	const bool highlighted{ pathHighlighted(parent ? std::format("{} > {}", parent, label) : std::string{ label }) };
 
-	if (ImGui::BeginTabItem(label, nullptr, navigating && cur == value ? ImGuiTabItemFlags_SetSelected : 0))
+	if (highlighted) {
+		ImGui::PushStyleColor(ImGuiCol_Text, highlightColor());
+	}
+
+	const bool open{ ImGui::BeginTabItem(label, nullptr, navigating && cur == value ? ImGuiTabItemFlags_SetSelected : 0) };
+
+	if (highlighted) {
+		ImGui::PopStyleColor();
+	}
+
+	if (open)
 	{
 		if (!navigating) {
 			cur = value;

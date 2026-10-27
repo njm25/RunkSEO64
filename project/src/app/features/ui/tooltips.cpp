@@ -68,6 +68,8 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "ui_sounds", "play a quiet click when you click something in the menu" },
 	{ "ui_sound_volume", "how loud the click sounds are" },
 	{ "ui_animations", "fade the menu in and out and animate switching tabs" },
+	{ "ui_context_highlight", "while in game, color the sections, settings and tabs that matter for your class and the weapon you're holding" },
+	{ "ui_connection_info", "show ping, tickrate, loss and choke in the menu footer, hover it for details and a graph" },
 	{ "ui_bg_opacity", "how see-through the menu and its windows are" },
 	{ "ui_fade_unhovered", "fade the whole menu while the mouse isn't over it" },
 	{ "ui_fade_opacity", "how faded the menu gets while the mouse is elsewhere" },

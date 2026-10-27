@@ -2,6 +2,10 @@
 #include "widgets.hpp"
 #include "ui.hpp"
 #include "ui_sound.hpp"
+#include "menu_context.hpp"
+#include "connection.hpp"
+
+#include "../diagnostics/diagnostics.hpp"
 
 #include "../cfg.hpp"
 
@@ -59,6 +63,17 @@ void Menu::run()
 	if (!m_registered) {
 		registerSections();
 		m_registered = true;
+	}
+
+	context_highlight->update(cfg::ui_context_highlight && open ? currentMenuContext() : MenuContext{});
+
+	if (cfg::ui_connection_info && open) {
+		connection->update(static_cast<float>(ImGui::GetTime()));
+	}
+
+	//loaded into an updated game and things broke, show what
+	if (open && diagnostics->consumeOpenRequest()) {
+		navigate(MenuTab::DIAGNOSTICS);
 	}
 
 	const ImVec2 display{ ImGui::GetIO().DisplaySize };
@@ -128,6 +143,18 @@ void Menu::run()
 			tabItem("statistics", m_tab, MenuTab::STATISTICS);
 			tabItem("configs", m_tab, MenuTab::CONFIGS);
 
+			const bool diag_failed{ diagnostics->failedAtLoad() > 0 };
+
+			if (diag_failed) {
+				ImGui::PushStyleColor(ImGuiCol_Text, warningColor());
+			}
+
+			tabItem("diagnostics", m_tab, MenuTab::DIAGNOSTICS);
+
+			if (diag_failed) {
+				ImGui::PopStyleColor();
+			}
+
 			//fade and slide the page in whenever what's shown changes
 			const int tab_key{ m_search.empty() ? static_cast<int>(m_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) : -2 };
 
@@ -195,6 +222,11 @@ void Menu::run()
 						tabConfigs();
 						break;
 					}
+
+					case MenuTab::DIAGNOSTICS: {
+						tabDiagnostics();
+						break;
+					}
 				}
 			}
 
@@ -218,7 +250,14 @@ void Menu::run()
 			ImGui::TextDisabled("Runkseo64 -");
 			ImGui::SameLine();
 			drawConfigSwitcher();
-			ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(build.c_str()).x);
+
+			const float build_x{ ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(build.c_str()).x };
+
+			if (cfg::ui_connection_info) {
+				connection->drawFooter(build_x - ImGui::GetStyle().ItemSpacing.x * 3.0f);
+			}
+
+			ImGui::SameLine(build_x);
 			ImGui::TextDisabled("%s", build.c_str());
 		}
 

@@ -170,6 +170,12 @@
     <ClCompile Include="src\app\features\ui\menu_statistics.cpp" />
     <ClCompile Include="src\app\features\statistics\statistics.cpp" />
     <ClCompile Include="src\app\features\statistics\statistics_game.cpp" />
+    <ClCompile Include="src\app\features\ui\menu_diagnostics.cpp" />
+    <ClCompile Include="src\app\features\ui\menu_context.cpp" />
+    <ClCompile Include="src\app\features\ui\connection.cpp" />
+    <ClCompile Include="src\app\features\diagnostics\diagnostics.cpp" />
+    <ClCompile Include="src\app\features\diagnostics\diagnostics_win.cpp" />
+    <ClCompile Include="src\app\features\game_info\game_info.cpp" />
     <ClCompile Include="src\app\features\statistics\weapon_names.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
@@ -374,6 +380,10 @@
     <ClInclude Include="src\shared\utils\funcs.hpp" />
     <ClInclude Include="src\shared\utils\hash.hpp" />
     <ClInclude Include="src\sdk\tracked\hook.hpp" />
+    <ClInclude Include="src\app\features\ui\menu_context.hpp" />
+    <ClInclude Include="src\app\features\ui\connection.hpp" />
+    <ClInclude Include="src\app\features\diagnostics\diagnostics.hpp" />
+    <ClInclude Include="src\sdk\tracked\load_report.hpp" />
     <ClInclude Include="src\shared\utils\insttracker.hpp" />
     <ClInclude Include="src\utils\inst_tracker.hpp" />
     <ClInclude Include="src\shared\utils\math.hpp" />

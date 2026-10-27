@@ -427,7 +427,7 @@ public:
 public:
 	CHandle<C_TFWeaponBase>(&m_hMyWeapons())[MAX_WEAPONS]
 		{
-			static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_BaseCombatCharacter"), HASH_CT("m_hMyWeapons")) };
+			static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_BaseCombatCharacter"), HASH_CT("m_hMyWeapons"), "DT_BaseCombatCharacter", "m_hMyWeapons") };
 
 			return *reinterpret_cast<CHandle<C_TFWeaponBase>(*)[MAX_WEAPONS]>(reinterpret_cast<uintptr_t>(this) + offset);
 		}
@@ -1733,31 +1733,31 @@ class C_PlayerResource : public C_BaseEntity
 public:
 	int GetPing(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iPing")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iPing"), "DT_PlayerResource", "m_iPing") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetScore(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iScore")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iScore"), "DT_PlayerResource", "m_iScore") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetDeaths(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iDeaths")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iDeaths"), "DT_PlayerResource", "m_iDeaths") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	bool GetConnected(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bConnected")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bConnected"), "DT_PlayerResource", "m_bConnected") };
 		return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index);
 	}
 
 	bool GetAlive(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bAlive")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bAlive"), "DT_PlayerResource", "m_bAlive") };
 		return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index);
 	}
 
@@ -1766,31 +1766,31 @@ public:
 		if (index < 0 || index > 101)
 			return;
 
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bAlive")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bAlive"), "DT_PlayerResource", "m_bAlive") };
 		*reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index) = value;
 	}
 
 	int GetHealth(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iHealth")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iHealth"), "DT_PlayerResource", "m_iHealth") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetAccountID(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iAccountID")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iAccountID"), "DT_PlayerResource", "m_iAccountID") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	bool GetValid(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bValid")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_bValid"), "DT_PlayerResource", "m_bValid") };
 		return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index);
 	}
 
 	int GetUserID(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iUserID")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_PlayerResource"), HASH_CT("m_iUserID"), "DT_PlayerResource", "m_iUserID") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 };
@@ -1800,133 +1800,133 @@ class C_TFPlayerResource : public C_PlayerResource
 public:
 	int GetTotalScore(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iTotalScore")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iTotalScore"), "DT_TFPlayerResource", "m_iTotalScore") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetMaxHealth(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iMaxHealth")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iMaxHealth"), "DT_TFPlayerResource", "m_iMaxHealth") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetMaxBuffedHealth(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iMaxBuffedHealth")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iMaxBuffedHealth"), "DT_TFPlayerResource", "m_iMaxBuffedHealth") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetPlayerClass(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerClass")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerClass"), "DT_TFPlayerResource", "m_iPlayerClass") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	bool GetArenaSpectator(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_bArenaSpectator")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_bArenaSpectator"), "DT_TFPlayerResource", "m_bArenaSpectator") };
 		return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(bool) * index);
 	}
 
 	int GetActiveDominations(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iActiveDominations")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iActiveDominations"), "DT_TFPlayerResource", "m_iActiveDominations") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	float GetNextRespawnTime(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_flNextRespawnTime")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_flNextRespawnTime"), "DT_TFPlayerResource", "m_flNextRespawnTime") };
 		return *reinterpret_cast<float *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(float) * index);
 	}
 
 	int GetChargeLevel(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iChargeLevel")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iChargeLevel"), "DT_TFPlayerResource", "m_iChargeLevel") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetDamage(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamage")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamage"), "DT_TFPlayerResource", "m_iDamage") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetDamageAssist(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageAssist")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageAssist"), "DT_TFPlayerResource", "m_iDamageAssist") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetDamageBoss(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageBoss")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageBoss"), "DT_TFPlayerResource", "m_iDamageBoss") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetHealingAssist(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iHealingAssist")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iHealingAssist"), "DT_TFPlayerResource", "m_iHealingAssist") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetDamageBlocked(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageBlocked")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iDamageBlocked"), "DT_TFPlayerResource", "m_iDamageBlocked") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetCurrencyCollected(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iCurrencyCollected")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iCurrencyCollected"), "DT_TFPlayerResource", "m_iCurrencyCollected") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetBonusPoints(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iBonusPoints")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iBonusPoints"), "DT_TFPlayerResource", "m_iBonusPoints") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetPlayerLevel(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerLevel")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerLevel"), "DT_TFPlayerResource", "m_iPlayerLevel") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetStreaks(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iStreaks")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iStreaks"), "DT_TFPlayerResource", "m_iStreaks") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetUpgradeRefundCredits(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iUpgradeRefundCredits")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iUpgradeRefundCredits"), "DT_TFPlayerResource", "m_iUpgradeRefundCredits") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetBuybackCredits(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iBuybackCredits")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iBuybackCredits"), "DT_TFPlayerResource", "m_iBuybackCredits") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetPlayerClassWhenKilled(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerClassWhenKilled")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iPlayerClassWhenKilled"), "DT_TFPlayerResource", "m_iPlayerClassWhenKilled") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	int GetConnectionState(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iConnectionState")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_iConnectionState"), "DT_TFPlayerResource", "m_iConnectionState") };
 		return *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(int) * index);
 	}
 
 	float GetConnectTime(int index)
 	{
-		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_flConnectTime")) };
+		static uintptr_t offset{ netvars->getOffset(HASH_CT("DT_TFPlayerResource"), HASH_CT("m_flConnectTime"), "DT_TFPlayerResource", "m_flConnectTime") };
 		return *reinterpret_cast<float *>(reinterpret_cast<uintptr_t>(this) + offset + sizeof(float) * index);
 	}
 
@@ -2073,7 +2073,7 @@ public:
 
 	inline bool IsPlayerReady(int iIndex)
 	{
-		static std::size_t offset{ netvars->getOffset(HASH_CT("DT_TeamplayRoundBasedRules"), HASH_CT("m_bPlayerReady")) };
+		static std::size_t offset{ netvars->getOffset(HASH_CT("DT_TeamplayRoundBasedRules"), HASH_CT("m_bPlayerReady"), "DT_TeamplayRoundBasedRules", "m_bPlayerReady") };
 
 		std::uintptr_t player_ready{ reinterpret_cast<std::uintptr_t>(this) + offset };
 

@@ -1,6 +1,8 @@
 #include "netvars.hpp"
 #include "interfaces.hpp"
 
+#include "../../sdk/tracked/load_report.hpp"
+
 std::string NetVars::propTypeToStr(const SendPropType type) const
 {
 	switch (type)
@@ -173,9 +175,25 @@ void NetVars::dumpTables(bool write_file)
 	file.close();
 }
 
-size_t NetVars::getOffset(const hash_t table, const hash_t var)
+size_t NetVars::getOffset(const hash_t table, const hash_t var, const char *const table_name, const char *const var_name)
 {
-	return m_offsets[table][var];
+	//find, not [], so a missing netvar doesn't quietly get added as offset 0
+	size_t offset{};
+	bool found{};
+
+	if (const auto t{ m_offsets.find(table) }; t != m_offsets.end())
+	{
+		if (const auto v{ t->second.find(var) }; v != t->second.end()) {
+			offset = v->second;
+			found = true;
+		}
+	}
+
+	if (table_name && var_name) {
+		load_report->add(LoadItem{ LoadKind::NETVAR, std::format("{}::{}", table_name, var_name), found, offset, 0.0, found ? "" : "not in the netvar tables" });
+	}
+
+	return offset;
 }
 
 RecvProp *NetVars::getProp(const hash_t table, const hash_t var)
@@ -218,18 +236,27 @@ bool NetVars::onLoad()
 {
 	dumpTables(true);
 
+	//a proxy that can't be hooked after a game update only loses its own feature, loading carries on
 	for (NetVarHook *const nh : getInsts<NetVarHook>())
 	{
-		if (!nh || !nh->init()) {
-			return false;
+		if (!nh) {
+			continue;
 		}
+
+		const bool ok{ nh->init() };
+
+		load_report->add(LoadItem{ LoadKind::NETVAR_HOOK, nh->name(), ok, 0, 0.0, ok ? "" : "netvar not found" });
 	}
 
 	for (NetVarArrayHook *const nah : getInsts<NetVarArrayHook>())
 	{
-		if (!nah || !nah->init()) {
-			return false;
+		if (!nah) {
+			continue;
 		}
+
+		const bool ok{ nah->init() };
+
+		load_report->add(LoadItem{ LoadKind::NETVAR_HOOK, nah->name(), ok, 0, 0.0, ok ? "" : "netvar not found" });
 	}
 
 	return true;
@@ -262,8 +289,9 @@ bool NetVarHook::init()
 
 bool NetVarHook::onUnload()
 {
+	//never hooked, nothing to put back
 	if (!m_prop) {
-		return false;
+		return true;
 	}
 
 	m_prop->SetProxyFn(m_original_fn);

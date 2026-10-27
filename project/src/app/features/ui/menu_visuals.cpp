@@ -362,11 +362,11 @@ void Menu::tabVisuals()
 {
 	if (ImGui::BeginTabBar("tabbar_visuals"))
 	{
-		tabItem("entities", m_visuals_tab, VisualsTab::ENTITIES);
-		tabItem("map", m_visuals_tab, VisualsTab::MAP);
-		tabItem("other", m_visuals_tab, VisualsTab::OTHER);
-		tabItem("colors", m_visuals_tab, VisualsTab::COLORS);
-		tabItem("menu", m_visuals_tab, VisualsTab::MENU);
+		tabItem("entities", m_visuals_tab, VisualsTab::ENTITIES, "visuals");
+		tabItem("map", m_visuals_tab, VisualsTab::MAP, "visuals");
+		tabItem("other", m_visuals_tab, VisualsTab::OTHER, "visuals");
+		tabItem("colors", m_visuals_tab, VisualsTab::COLORS, "visuals");
+		tabItem("menu", m_visuals_tab, VisualsTab::MENU, "visuals");
 
 		if (m_visuals_tab == VisualsTab::ENTITIES) {
 			pageVisualsEntities();
@@ -1443,6 +1443,11 @@ void Menu::pageVisualsMenu()
 				toggle("animations", &cfg::ui_animations);
 				toggle("click sounds", &cfg::ui_sounds);
 				sliderFloat("sound volume", &cfg::ui_sound_volume, 0.0f, 1.0f, "%.2f");
+
+				sep();
+
+				toggle("highlight relevant", &cfg::ui_context_highlight);
+				toggle("connection info", &cfg::ui_connection_info);
 
 				sep();
 

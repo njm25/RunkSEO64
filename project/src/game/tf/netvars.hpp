@@ -16,7 +16,8 @@ private:
 	void dumpTables(bool write_file);
 
 public:
-	size_t getOffset(const hash_t table, const hash_t var);
+	//names are only for the diagnostics tab, lookups that pass them show up there
+	size_t getOffset(const hash_t table, const hash_t var, const char *const table_name = nullptr, const char *const var_name = nullptr);
 	RecvProp *getProp(const hash_t table, const hash_t var);
 	size_t getDatamapVarOffset(const datamap_t *dmap, const hash_t var);
 public:
@@ -27,13 +28,13 @@ MAKE_UNIQUE(NetVars, netvars);
 
 #define NETVAR(type, var, table) type &var() \
 { \
-	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(#var)) }; \
+	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(#var), table, #var) }; \
 	return *reinterpret_cast<type *>(reinterpret_cast<uintptr_t>(this) + offset); \
 }
 
 #define NETVAR_PTR(type, var, table) type* var() \
 { \
-	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(#var)) }; \
+	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(#var), table, #var) }; \
 	return reinterpret_cast<type *>(reinterpret_cast<uintptr_t>(this) + offset); \
 }
 
@@ -45,7 +46,7 @@ MAKE_UNIQUE(NetVars, netvars);
 
 #define NETVAR_OFFSET(type, name, table, var, off) type &name() \
 { \
-	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(var)) + off }; \
+	static uintptr_t offset{ netvars->getOffset(HASH_CT(table), HASH_CT(var), table, var) + off }; \
 	return *reinterpret_cast<type *>(reinterpret_cast<uintptr_t>(this) + offset); \
 }
 
@@ -74,6 +75,8 @@ public:
 public:
 	bool init();
 	bool onUnload() override;
+
+	const std::string &name() const { return m_name; }
 
 public:
 	void callOriginal(const CRecvProxyData *pData, void *pStruct, void *pOut) const;
@@ -109,6 +112,8 @@ public:
 public:
 	bool init();
 	bool onUnload() override;
+
+	const std::string &name() const { return m_name; }
 
 public:
 	void callOriginal(const CRecvProxyData *pData, void *pStruct, void *pOut) const;

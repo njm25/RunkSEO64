@@ -1046,7 +1046,7 @@ MAKE_HOOK(
 	{
 		const uintptr_t gc_client_system{ s::GTFGCClientSystem.call<uintptr_t>() };
 
-		if (!gc_client_system) {
+		if (!gc_client_system || !s::CMsgSurveyRequest_match_id_Offset) {
 			return;
 		}
 
@@ -1077,7 +1077,7 @@ MAKE_HOOK(
 		s::CMatchInviteNotification_AcceptMatch.call<void>(rcx);
 	}
 
-	if (cfg::misc_remove_autojoin_countdown)
+	if (cfg::misc_remove_autojoin_countdown && s::CMatchInviteNotification_Flags_Offset)
 	{
 		const uintptr_t notification{ reinterpret_cast<uintptr_t>(rcx) };
 		const int32_t offset{ *s::CMatchInviteNotification_Flags_Offset.cast<int32_t *>() };
@@ -2117,7 +2117,7 @@ MAKE_HOOK(
 	char,
 	void *rcx)
 {
-	if (rcx && cfg::misc_bypass_f2p_chat) {
+	if (rcx && cfg::misc_bypass_f2p_chat && s::GTFGCClientSystem_NonPremiumAccount_Offset) {
 		const int32_t offset{ *s::GTFGCClientSystem_NonPremiumAccount_Offset.cast<int32_t *>() };
 		*reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(rcx) + offset) = 0;
 	}

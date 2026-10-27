@@ -2,8 +2,10 @@
 #include "binds.hpp"
 #include "tooltips.hpp"
 #include "ui.hpp"
+#include "menu_context.hpp"
 
 #include "../notifs/notifs.hpp"
+#include "../diagnostics/diagnostics.hpp"
 #include "../cfg.hpp"
 
 #include <optional>
@@ -85,6 +87,7 @@ struct RegisteredWidget final
 struct RegisteredSection final
 {
 	std::string key{};
+	std::string id{};
 	std::string title{};
 	std::string path{}; //tab names leading to the section, e.g. "aimbot > main"
 	std::vector<RegisteredWidget> widgets{};
@@ -113,7 +116,7 @@ static RegisteredSection *findOrAddSection(const char *const id, const char *con
 		}
 	}
 
-	registered_sections.push_back(RegisteredSection{ key, title, cur_path });
+	registered_sections.push_back(RegisteredSection{ key, id, title, cur_path });
 
 	return &registered_sections.back();
 }
@@ -209,6 +212,100 @@ bool customWidget(const char *const label, const void *const var)
 {
 	return widgetVisible(label, var);
 }
+
+ImVec4 highlightColor()
+{
+	return ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+}
+
+static bool sectionHighlighted(const RegisteredSection *const sec)
+{
+	return sec && context_highlight->section(sec->id);
+}
+
+bool pathHighlighted(std::string_view path)
+{
+	if (!context_highlight->active()) {
+		return false;
+	}
+
+	for (const RegisteredSection &sec : registered_sections)
+	{
+		if (sec.path != path && !sec.path.starts_with(std::string{ path } + " >")) {
+			continue;
+		}
+
+		if (sectionHighlighted(&sec)) {
+			return true;
+		}
+
+		for (const RegisteredWidget &w : sec.widgets)
+		{
+			if (w.var && context_highlight->var(w.var->name())) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+//greys a widget out when something it needs failed to load, and colors it when it matters for what you're playing
+class WidgetState final
+{
+private:
+	bool m_disabled{};
+	bool m_highlighted{};
+
+public:
+	explicit WidgetState(const std::vector<const void *> &vars)
+	{
+		if (mode == WidgetMode::REGISTER || vars.empty()) {
+			return;
+		}
+
+		bool all_unavailable{ true };
+
+		for (const void *const var : vars)
+		{
+			const ConfigVar *const cfg_var{ findCfgVar(var) };
+
+			if (!cfg_var || diagnostics->unavailableReason(cfg_var).empty()) {
+				all_unavailable = false;
+			}
+
+			if (cfg_var && context_highlight->var(cfg_var->name())) {
+				m_highlighted = true;
+			}
+		}
+
+		m_disabled = all_unavailable;
+
+		if (m_disabled) {
+			ImGui::BeginDisabled();
+		}
+
+		else if (m_highlighted) {
+			ImGui::PushStyleColor(ImGuiCol_Text, highlightColor());
+		}
+	}
+
+	explicit WidgetState(const void *const var) : WidgetState(std::vector<const void *>{ var }) {}
+
+	~WidgetState()
+	{
+		if (m_disabled) {
+			ImGui::EndDisabled();
+		}
+
+		else if (m_highlighted) {
+			ImGui::PopStyleColor();
+		}
+	}
+
+	WidgetState(const WidgetState &) = delete;
+	WidgetState &operator=(const WidgetState &) = delete;
+};
 
 void setWidgetMode(const WidgetMode new_mode)
 {
@@ -771,11 +868,27 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 	const char *const tooltip{ getTooltip(cfg_var->name()) };
 	const bool slider{ ctx && (ctx->m_type == WidgetType::SLIDER_INT || ctx->m_type == WidgetType::SLIDER_FLOAT) };
 	const bool details{ cfg::ui_tooltip_details };
+	const std::string unavailable{ diagnostics->unavailableReason(cfg_var) };
+	const bool relevant{ context_highlight->var(cfg_var->name()) };
 
-	if ((tooltip || slider || details) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+	if ((tooltip || slider || details || !unavailable.empty() || relevant) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
 	{
 		ImGui::BeginTooltip();
 		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
+
+		if (!unavailable.empty())
+		{
+			ImGui::TextColored(warningColor(), "unavailable, something it needs failed to load:");
+			ImGui::TextColored(warningColor(), "%s", unavailable.c_str());
+
+			if (tooltip || details) {
+				ImGui::Separator();
+			}
+		}
+
+		else if (relevant) {
+			ImGui::TextColored(highlightColor(), "relevant right now (%s)", context_highlight->describe().c_str());
+		}
 
 		if (tooltip) {
 			ImGui::TextUnformatted(tooltip);
@@ -909,6 +1022,8 @@ bool toggle(const char *const label, bool *const var)
 		return false;
 	}
 
+	const WidgetState state{ var };
+
 	const bool callback{ ImGui::Checkbox(label, var) };
 
 	WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
@@ -922,6 +1037,8 @@ bool selectSingle(const char *const label, int *const var, std::vector<std::pair
 	if (!widgetVisible(label, var)) {
 		return false;
 	}
+
+	const WidgetState state{ var };
 
 	bool callback{};
 
@@ -996,6 +1113,14 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 	if (!any_visible) {
 		return false;
 	}
+
+	std::vector<const void *> ptrs{};
+
+	for (const std::pair<std::string, bool *> &var : vars) {
+		ptrs.push_back(var.second);
+	}
+
+	const WidgetState state{ ptrs };
 
 	if (ImGui::BeginCombo(label, preview.c_str()))
 	{
@@ -1096,6 +1221,8 @@ bool sliderInt(const char *const label, int *const var, int min, int max, const 
 		return false;
 	}
 
+	const WidgetState state{ var };
+
 	WidgetCtxSliderInt ctx{ min, max, fmt };
 
 	return sliderRow(label, var, min, max, fmt, &ctx);
@@ -1106,6 +1233,8 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 	if (!widgetVisible(label, var)) {
 		return false;
 	}
+
+	const WidgetState state{ var };
 
 	WidgetCtxSliderFloat ctx{ min, max, fmt };
 
@@ -1231,6 +1360,8 @@ bool colorPicker(const char *const label, Color *const var)
 	if (!widgetVisible(label, var)) {
 		return false;
 	}
+
+	const WidgetState state{ var };
 
 	//the color being edited and what it was when its popup opened, to know when to add it to the recent colors
 	static const Color *editing{};
@@ -1420,6 +1551,13 @@ void nextColumn()
 	}
 }
 
+static void sectionContextTooltip(const bool highlighted)
+{
+	if (highlighted && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+		ImGui::SetTooltip("relevant right now (%s)", context_highlight->describe().c_str());
+	}
+}
+
 static void sectionContext(const RegisteredSection *const sec)
 {
 	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -1522,11 +1660,30 @@ void section(const char *const id, const char *const title, const float width, c
 		return;
 	}
 
+	//the border goes around the child, so it has to be pushed before it begins
+	const bool highlighted{ sectionHighlighted(sec) };
+
+	if (highlighted) {
+		ImGui::PushStyleColor(ImGuiCol_Border, highlightColor());
+	}
+
 	ImGui::BeginChild(id, { scaled(width), 0.0f }, flags);
 	{
+		if (highlighted) {
+			ImGui::PopStyleColor();
+		}
+
 		ImGui::PushItemWidth(item_width > 0.0f ? scaled(item_width) : ImGui::GetContentRegionAvail().x);
 
-		ImGui::TextUnformatted(title);
+		if (highlighted) {
+			ImGui::TextColored(highlightColor(), "%s", title);
+		}
+
+		else {
+			ImGui::TextUnformatted(title);
+		}
+
+		sectionContextTooltip(highlighted);
 		sectionContext(sec);
 		ImGui::Separator();
 

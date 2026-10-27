@@ -7,8 +7,8 @@ void Menu::tabAimbot()
 {
 	if (ImGui::BeginTabBar("tabbar_aimbot"))
 	{
-		tabItem("main", m_aimbot_tab, AimbotTab::MAIN);
-		tabItem("visuals", m_aimbot_tab, AimbotTab::VISUALS);
+		tabItem("main", m_aimbot_tab, AimbotTab::MAIN, "aimbot");
+		tabItem("visuals", m_aimbot_tab, AimbotTab::VISUALS, "aimbot");
 
 		if (m_aimbot_tab == AimbotTab::MAIN) {
 			pageAimbotMain();

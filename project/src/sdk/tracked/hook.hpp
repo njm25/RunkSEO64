@@ -8,6 +8,8 @@ private:
 	std::string m_name{};
 	std::function<bool()> m_init_fn{};
 	void *m_og_fn{};
+	void *m_target{};
+	MH_STATUS m_status{ MH_UNKNOWN };
 
 public:
 	Hook(std::string_view name, const std::function<bool()> &init_fn) : InstTracker(this)
@@ -19,7 +21,27 @@ public:
 public:
 	bool create(void *const src, void *const dst)
 	{
-		return MH_CreateHook(src, dst, &m_og_fn) == MH_OK;
+		m_target = src;
+
+		//a sig that wasn't found leaves the target null, nothing to hook
+		if (!src) {
+			m_status = MH_ERROR_NOT_EXECUTABLE;
+			return false;
+		}
+
+		m_status = MH_CreateHook(src, dst, &m_og_fn);
+
+		return m_status == MH_OK;
+	}
+
+	void *target() const
+	{
+		return m_target;
+	}
+
+	MH_STATUS status() const
+	{
+		return m_status;
 	}
 
 public:

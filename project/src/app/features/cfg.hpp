@@ -429,6 +429,8 @@ MAKE_CFGVAR(ui_fade_opacity, 0.5f);
 MAKE_CFGVAR(ui_animations, true);
 MAKE_CFGVAR(ui_sounds, false);
 MAKE_CFGVAR(ui_sound_volume, 0.5f);
+MAKE_CFGVAR(ui_context_highlight, true);
+MAKE_CFGVAR(ui_connection_info, true);
 
 MAKE_CFGVAR(ui_font, std::string("tahoma.ttf")); //file in a fonts folder, or a full path
 MAKE_CFGVAR(ui_font_size, 13);

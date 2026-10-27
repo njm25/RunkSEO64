@@ -55,6 +55,10 @@ void setSearchPath(std::string_view path);
 bool searchGotoClicked();
 int searchResultCount();
 
+//context highlighting, a tab path like "aimbot" or "aimbot > main"
+ImVec4 highlightColor();
+bool pathHighlighted(std::string_view path);
+
 //binds
 ImVec4 warningColor();
 bool editBindType(const char *const id, BindType *const type);

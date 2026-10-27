@@ -2515,6 +2515,21 @@ public:
 		TOTAL
 	};
 
+	const char *GetName()
+	{
+		return mem::callVirtual<0, const char *>(this);
+	}
+
+	const char *GetAddress()
+	{
+		return mem::callVirtual<1, const char *>(this);
+	}
+
+	float GetTimeConnected()
+	{
+		return mem::callVirtual<3, float>(this);
+	}
+
 	bool IsLoopback()
 	{
 		return mem::callVirtual<6, bool>(this);
@@ -2533,6 +2548,21 @@ public:
 	float GetAvgLatency(int flow)
 	{
 		return mem::callVirtual<10, float, int>(this, flow);
+	}
+
+	float GetAvgLoss(int flow)
+	{
+		return mem::callVirtual<11, float, int>(this, flow);
+	}
+
+	float GetAvgChoke(int flow)
+	{
+		return mem::callVirtual<12, float, int>(this, flow);
+	}
+
+	float GetAvgData(int flow)
+	{
+		return mem::callVirtual<13, float, int>(this, flow);
 	}
 
 	bool CanPacket()

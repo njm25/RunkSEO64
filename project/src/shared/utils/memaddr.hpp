@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include <compare>
 
 class MemAddr final
@@ -39,6 +41,18 @@ public:
     template <typename T, typename... Args>
     inline T call(Args... args) const
     {
+        //a sig that wasn't found after a game update is 0, calling it would crash
+        if (!m_addr)
+        {
+            if constexpr (std::is_void_v<T>) {
+                return;
+            }
+
+            else {
+                return T{};
+            }
+        }
+
         return reinterpret_cast<T(__fastcall *)(Args...)>(m_addr)(args...);
     }
 };

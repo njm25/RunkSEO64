@@ -421,6 +421,7 @@ MAKE_CFGVAR(ui_bg_image_opacity, 0.3f);
 MAKE_CFGVAR(ui_bg_image_fit, 0); // (0 = cover) (1 = stretch)
 MAKE_CFGVAR(ui_scale, 1.0f);
 MAKE_CFGVAR(ui_scroll_edit, true);
+MAKE_CFGVAR(ui_tooltip_details, true);
 MAKE_CFGVAR(ui_slider_buttons, true);
 MAKE_CFGVAR(ui_bg_opacity, 1.0f);
 MAKE_CFGVAR(ui_fade_unhovered, false);

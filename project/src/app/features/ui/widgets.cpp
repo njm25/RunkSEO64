@@ -314,6 +314,33 @@ void drawConfirm()
 
 //==================================================================================================================================
 
+static std::any currentValue(const ConfigVar *const var)
+{
+	const size_t type{ var->hash() };
+
+	if (type == typeid(bool).hash_code()) {
+		return *static_cast<bool *>(var->ptr());
+	}
+
+	else if (type == typeid(int).hash_code()) {
+		return *static_cast<int *>(var->ptr());
+	}
+
+	else if (type == typeid(float).hash_code()) {
+		return *static_cast<float *>(var->ptr());
+	}
+
+	else if (type == typeid(std::string).hash_code()) {
+		return *static_cast<std::string *>(var->ptr());
+	}
+
+	else if (type == typeid(Color).hash_code()) {
+		return *static_cast<Color *>(var->ptr());
+	}
+
+	return {};
+}
+
 static std::string formatValue(const ConfigVar *const var, const std::any &val, const WidgetCtx *const ctx)
 {
 	const size_t type{ var->hash() };
@@ -743,14 +770,41 @@ static void widgetContext(const char *const label, void *const var, WidgetCtx *c
 
 	const char *const tooltip{ getTooltip(cfg_var->name()) };
 	const bool slider{ ctx && (ctx->m_type == WidgetType::SLIDER_INT || ctx->m_type == WidgetType::SLIDER_FLOAT) };
+	const bool details{ cfg::ui_tooltip_details };
 
-	if ((tooltip || slider) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+	if ((tooltip || slider || details) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 	{
 		ImGui::BeginTooltip();
 		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
 
 		if (tooltip) {
 			ImGui::TextUnformatted(tooltip);
+		}
+
+		if (details)
+		{
+			if (tooltip) {
+				ImGui::Separator();
+			}
+
+			//the default only shows once it's been changed
+			const std::string value{ formatValue(cfg_var, currentValue(cfg_var), ctx) };
+
+			if (cfg_var->isDefault()) {
+				ImGui::Text("value: %s (default)", value.c_str());
+			}
+
+			else {
+				ImGui::Text("value: %s", value.c_str());
+				ImGui::TextDisabled("default: %s", formatValue(cfg_var, cfg_var->defaultValue(), ctx).c_str());
+			}
+
+			for (const Bind &bind : binds->getBinds())
+			{
+				if (bind.var == cfg_var) {
+					ImGui::TextDisabled("bound: %s (%s, %s)", bind.name.c_str(), utils::keyToStr(bind.key).c_str(), bind.type == BindType::TOGGLE ? "toggle" : "hold");
+				}
+			}
 		}
 
 		if (slider) {

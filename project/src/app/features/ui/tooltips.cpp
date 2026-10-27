@@ -62,6 +62,7 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "ui_bg_image_opacity", "how strongly the background image shows through" },
 	{ "ui_bg_image_fit", "cover crops the image to fill the menu, stretch squashes it to fit" },
 	{ "ui_color_accent", "highlight color, used when custom accent is on" },
+	{ "ui_tooltip_details", "show every setting's value, default and binds when hovering it" },
 	{ "ui_scroll_edit", "scroll over a slider or dropdown to change it, hold shift for bigger steps" },
 	{ "ui_slider_buttons", "show -/+ buttons next to sliders for exact steps, hold shift for bigger ones" },
 	{ "ui_sounds", "play a quiet click when you click something in the menu" },

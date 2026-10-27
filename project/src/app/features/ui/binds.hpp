@@ -44,6 +44,15 @@ public:
 	void save();
 
 public:
+	//profiles are saved sets of binds, kept next to binds.json
+	std::string profilePath(std::string_view name) const;
+	std::vector<std::string> profiles() const;
+	bool profileExists(std::string_view name) const;
+	void saveProfile(const std::string &name);
+	bool loadProfile(const std::string &name);
+	bool deleteProfile(const std::string &name);
+
+public:
 	std::vector<Bind> &getBinds() { return m_binds; }
 	void removeAt(const size_t index);
 	void move(const size_t from, const size_t to);

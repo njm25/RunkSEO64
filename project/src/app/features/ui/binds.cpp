@@ -1,6 +1,8 @@
 #include "binds.hpp"
 #include "ui.hpp"
 
+#include "../notifs/notifs.hpp"
+
 #include "../cfg.hpp"
 
 void Binds::save(const std::string &path)
@@ -172,6 +174,95 @@ void Binds::add(const Bind bind)
 void Binds::save()
 {
 	save(utils::getFilePath() + "binds.json");
+}
+
+static std::filesystem::path profileDir()
+{
+	const std::filesystem::path path{ std::filesystem::path{ utils::getFilePath() } / "binds" };
+
+	if (!std::filesystem::exists(path)) {
+		std::filesystem::create_directories(path);
+	}
+
+	return path;
+}
+
+std::string Binds::profilePath(std::string_view name) const
+{
+	return (profileDir() / std::format("{}.json", name)).string();
+}
+
+std::vector<std::string> Binds::profiles() const
+{
+	std::vector<std::string> names{};
+
+	for (const std::filesystem::directory_entry &file : std::filesystem::directory_iterator{ profileDir() })
+	{
+		if (file.path().extension() == ".json") {
+			names.push_back(file.path().stem().string());
+		}
+	}
+
+	std::sort(names.begin(), names.end());
+
+	return names;
+}
+
+bool Binds::profileExists(std::string_view name) const
+{
+	return std::filesystem::exists(profilePath(name));
+}
+
+void Binds::saveProfile(const std::string &name)
+{
+	save(profilePath(name));
+
+	notifs->message(std::format("saved bind profile '{}'", name));
+}
+
+bool Binds::loadProfile(const std::string &name)
+{
+	if (!profileExists(name)) {
+		notifs->warning(std::format("bind profile '{}' doesn't exist", name));
+		return false;
+	}
+
+	const std::vector<Bind> backup{ m_binds };
+
+	m_binds.clear();
+
+	//a broken file leaves the current binds as they were
+	try {
+		load(profilePath(name));
+	}
+
+	catch (const std::exception &e)
+	{
+		m_binds = backup;
+		notifs->warning(std::format("failed to load bind profile '{}' ({})", name, e.what()));
+
+		return false;
+	}
+
+	save();
+
+	notifs->message(std::format("loaded bind profile '{}'", name));
+
+	return true;
+}
+
+bool Binds::deleteProfile(const std::string &name)
+{
+	std::error_code ec{};
+
+	if (!std::filesystem::remove(profilePath(name), ec)) {
+		notifs->warning(std::format("failed to delete bind profile '{}'", name));
+		return false;
+	}
+
+	notifs->message(std::format("deleted bind profile '{}'", name));
+
+	return true;
 }
 
 void Binds::removeAt(const size_t index)

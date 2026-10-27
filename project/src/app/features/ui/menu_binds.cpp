@@ -1,10 +1,98 @@
 #include "menu.hpp"
 #include "widgets.hpp"
 #include "binds.hpp"
+#include "configs.hpp"
+
+//name field, save, and a dropdown of saved profiles to load (right click one to delete it)
+static void profileBar()
+{
+	static std::string name{};
+
+	const ImGuiStyle &style{ ImGui::GetStyle() };
+	const float save_w{ ImGui::CalcTextSize("save profile").x + style.FramePadding.x * 2.0f };
+	const float load_w{ ImGui::CalcTextSize("load profile").x + style.FramePadding.x * 2.0f + ImGui::GetFrameHeight() };
+
+	const std::string name_error{ name.empty() ? "" : Configs::validateName(name) };
+
+	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - save_w - load_w - style.ItemSpacing.x * 2.0f);
+	inputStringWithHint("##profile_name", &name, "profile name");
+
+	const bool enter{ ImGui::IsItemDeactivated() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) };
+
+	ImGui::SameLine();
+
+	ImGui::BeginDisabled(name.empty() || !name_error.empty());
+
+	if ((ImGui::Button("save profile", { save_w, 0.0f }) || enter) && !name.empty() && name_error.empty())
+	{
+		const std::string profile{ name };
+
+		if (binds->profileExists(profile)) {
+			confirm(std::format("overwrite the bind profile '{}' with your current binds?", profile), [profile]() { binds->saveProfile(profile); });
+		}
+
+		else {
+			binds->saveProfile(profile);
+		}
+
+		name.clear();
+	}
+
+	ImGui::EndDisabled();
+
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(load_w);
+
+	if (ImGui::BeginCombo("##load_profile", "load profile"))
+	{
+		const std::vector<std::string> profiles{ binds->profiles() };
+
+		if (profiles.empty()) {
+			ImGui::TextDisabled("no profiles saved yet");
+		}
+
+		std::string to_delete{};
+
+		for (const std::string &profile : profiles)
+		{
+			if (ImGui::Selectable(profile.c_str()))
+			{
+				if (binds->getBinds().empty()) {
+					binds->loadProfile(profile);
+				}
+
+				else {
+					confirm(std::format("replace your current binds with the profile '{}'?", profile), [profile]() { binds->loadProfile(profile); });
+				}
+			}
+
+			if (ImGui::BeginPopupContextItem(profile.c_str()))
+			{
+				if (ImGui::MenuItem("delete")) {
+					to_delete = profile;
+				}
+
+				ImGui::EndPopup();
+			}
+		}
+
+		ImGui::EndCombo();
+
+		if (!to_delete.empty()) {
+			confirm(std::format("delete the bind profile '{}'?", to_delete), [to_delete]() { binds->deleteProfile(to_delete); });
+		}
+	}
+
+	if (!name_error.empty()) {
+		ImGui::TextColored(warningColor(), "%s", name_error.c_str());
+	}
+}
 
 void Menu::tabBinds()
 {
 	std::vector<Bind> &bind_list{ binds->getBinds() };
+
+	profileBar();
 
 	ImGui::BeginChild("group_binds", { 0.0f, -m_footer_h });
 	{

@@ -62,6 +62,31 @@ static void skinCombo(const char *const label, const int slot, int *const var)
 	}
 }
 
+//everything the skin changer can put on one weapon slot
+static void skinSlotSection(const char *const id, const char *const title, const int slot, int *const kit, int *const unusual, int *const sheen,
+							bool *const australium, bool *const festive, int *const style)
+{
+	section(id, title, 200.0f, [=]
+	{
+		skinCombo("war paint", slot, kit);
+
+		sep();
+
+		selectSingle("unusual", unusual, { { "none", 0 }, { "hot", 1 }, { "isotope", 2 }, { "cool", 3 }, { "energy orb", 4 } });
+
+		selectSingle("sheen", sheen,
+		{
+			{ "none", 0 }, { "team shine", 1 }, { "deadly daffodil", 2 }, { "manndarin", 3 },
+			{ "mean green", 4 }, { "agonizing emerald", 5 }, { "villainous violet", 6 }, { "hot rod", 7 }
+		});
+
+		toggle("australium", australium);
+		toggle("festivized", festive);
+
+		selectSingle("style", style, { { "default", 0 }, { "style 1", 1 }, { "style 2", 2 }, { "style 3", 3 }, { "style 4", 4 } });
+	});
+}
+
 void Menu::pageVisualsAwareness()
 {
 	beginPage("group_visuals_awareness", m_footer_h);
@@ -109,6 +134,12 @@ void Menu::pageVisualsAwareness()
 			{
 				toggle("warn when aimed at", &cfg::sniper_warning);
 			});
+
+			section("freecam", "freecam", 180.0f, []
+			{
+				toggle("while dead", &cfg::freecam_active);
+				sliderFloat("speed", &cfg::freecam_speed, 100.0f, 2000.0f, "%.0f");
+			});
 		}
 		endColumn();
 
@@ -116,23 +147,20 @@ void Menu::pageVisualsAwareness()
 
 		beginColumn("group_visuals_awareness2");
 		{
-			section("freecam", "freecam", 180.0f, []
-			{
-				toggle("while dead", &cfg::freecam_active);
-				sliderFloat("speed", &cfg::freecam_speed, 100.0f, 2000.0f, "%.0f");
-			});
-
 			section("skin_changer", "skin changer", 200.0f, []
 			{
 				toggle("active", &cfg::skins_active);
 				selectSingle("wear", &cfg::skins_wear, { { "factory new", 0 }, { "minimal wear", 1 }, { "field tested", 2 }, { "well worn", 3 }, { "battle scarred", 4 } });
-
-				sep();
-
-				skinCombo("primary", 0, &cfg::skins_primary);
-				skinCombo("secondary", 1, &cfg::skins_secondary);
-				skinCombo("melee", 2, &cfg::skins_melee);
 			});
+
+			skinSlotSection("skins_primary", "primary skin", 0, &cfg::skins_primary, &cfg::skins_primary_unusual, &cfg::skins_primary_sheen,
+							&cfg::skins_primary_australium, &cfg::skins_primary_festive, &cfg::skins_primary_style);
+
+			skinSlotSection("skins_secondary", "secondary skin", 1, &cfg::skins_secondary, &cfg::skins_secondary_unusual, &cfg::skins_secondary_sheen,
+							&cfg::skins_secondary_australium, &cfg::skins_secondary_festive, &cfg::skins_secondary_style);
+
+			skinSlotSection("skins_melee", "melee skin", 2, &cfg::skins_melee, &cfg::skins_melee_unusual, &cfg::skins_melee_sheen,
+							&cfg::skins_melee_australium, &cfg::skins_melee_festive, &cfg::skins_melee_style);
 		}
 		endColumn();
 	}

@@ -5,15 +5,51 @@
 
 #include <bit>
 
-static int kitForSlot(const int slot)
+struct SlotSettings final
+{
+	int kit{};
+	int unusual{};
+	int sheen{};
+	bool australium{};
+	bool festive{};
+	int style{};
+};
+
+static SlotSettings slotSettings(const int slot)
 {
 	switch (slot)
 	{
-		case 0: return cfg::skins_primary;
-		case 1: return cfg::skins_secondary;
-		case 2: return cfg::skins_melee;
-		default: return 0;
+		case 0: return { cfg::skins_primary, cfg::skins_primary_unusual, cfg::skins_primary_sheen, cfg::skins_primary_australium, cfg::skins_primary_festive, cfg::skins_primary_style };
+		case 1: return { cfg::skins_secondary, cfg::skins_secondary_unusual, cfg::skins_secondary_sheen, cfg::skins_secondary_australium, cfg::skins_secondary_festive, cfg::skins_secondary_style };
+		case 2: return { cfg::skins_melee, cfg::skins_melee_unusual, cfg::skins_melee_sheen, cfg::skins_melee_australium, cfg::skins_melee_festive, cfg::skins_melee_style };
+		default: return {};
 	}
+}
+
+static std::string settingsKey()
+{
+	if (!cfg::skins_active) {
+		return "off";
+	}
+
+	std::string key{ std::format("wear {}", cfg::skins_wear) };
+
+	for (int slot{}; slot < 3; slot++)
+	{
+		const SlotSettings s{ slotSettings(slot) };
+
+		key += std::format(" | {} {} {} {} {} {}", s.kit, s.unusual, s.sheen, s.australium, s.festive, s.style);
+	}
+
+	return key;
+}
+
+//the four effects weapons can have, in the order the menu lists them
+static float unusualEffect(const int option)
+{
+	constexpr int effects[]{ 0, weapon_unusual_effects::weapon_unusual_hot, weapon_unusual_effects::weapon_unusual_isotope, weapon_unusual_effects::weapon_unusual_cool, weapon_unusual_effects::weapon_unusual_energyorb };
+
+	return static_cast<float>(effects[std::clamp(option, 0, 4)]);
 }
 
 static float wearValue()
@@ -125,16 +161,10 @@ void SkinChanger::apply()
 
 	for (int slot{}; slot < 3; slot++)
 	{
-		const int kit{ kitForSlot(slot) };
-
-		if (!kit) {
-			continue;
-		}
-
+		const SlotSettings s{ slotSettings(slot) };
 		C_TFWeaponBase *const weapon{ weaponInSlot(local, slot) };
 
-		//a kit picked for a different weapon than the one in the slot now
-		if (!weapon || !kitValid(weapon, kit)) {
+		if (!weapon) {
 			continue;
 		}
 
@@ -144,9 +174,35 @@ void SkinChanger::apply()
 			continue;
 		}
 
-		//integer attributes keep their bits in the float
-		setAttribute(list, attributes::paintkit_proto_def_index, std::bit_cast<float>(kit));
-		setAttribute(list, attributes::set_item_texture_wear, wearValue());
+		//a kit picked for a different weapon than the one in the slot now is skipped, the rest still applies
+		if (s.kit && kitValid(weapon, s.kit))
+		{
+			//integer attributes keep their bits in the float
+			setAttribute(list, attributes::paintkit_proto_def_index, std::bit_cast<float>(s.kit));
+			setAttribute(list, attributes::set_item_texture_wear, wearValue());
+		}
+
+		if (s.unusual) {
+			setAttribute(list, attributes::set_attached_particle, unusualEffect(s.unusual));
+		}
+
+		//sheens come with the specialized killstreak tier
+		if (s.sheen) {
+			setAttribute(list, attributes::killstreak_tier, 2.0f);
+			setAttribute(list, attributes::killstreak_idleeffect, static_cast<float>(s.sheen));
+		}
+
+		if (s.australium) {
+			setAttribute(list, attributes::is_australium_item, 1.0f);
+		}
+
+		if (s.festive) {
+			setAttribute(list, attributes::is_festivized, 1.0f);
+		}
+
+		if (s.style) {
+			setAttribute(list, attributes::item_style_override, static_cast<float>(s.style - 1));
+		}
 	}
 }
 
@@ -156,18 +212,18 @@ void SkinChanger::run()
 		return;
 	}
 
-	const bool changed{ m_applied_active != cfg::skins_active
-		|| (cfg::skins_active && (m_applied[0] != cfg::skins_primary || m_applied[1] != cfg::skins_secondary || m_applied[2] != cfg::skins_melee || m_applied_wear != cfg::skins_wear)) };
+	//empty until the first check, nothing applied yet means nothing to rebuild
+	std::string key{ settingsKey() };
+
+	if (m_applied.empty()) {
+		m_applied = cfg::skins_active ? "off" : key;
+	}
 
 	const float now{ i::global_vars->realtime };
 
-	if (changed)
+	if (key != m_applied)
 	{
-		m_applied_active = cfg::skins_active;
-		m_applied[0] = cfg::skins_primary;
-		m_applied[1] = cfg::skins_secondary;
-		m_applied[2] = cfg::skins_melee;
-		m_applied_wear = cfg::skins_wear;
+		m_applied = std::move(key);
 
 		//waits a moment so flicking through the list doesn't rebuild every frame
 		m_full_update_time = now + 0.4f;

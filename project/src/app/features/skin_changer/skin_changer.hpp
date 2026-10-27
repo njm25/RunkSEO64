@@ -21,9 +21,7 @@ SkinSlot skinSlot(const int slot);
 class SkinChanger final : public HasLevelInit
 {
 private:
-	int m_applied[3]{};
-	int m_applied_wear{};
-	bool m_applied_active{};
+	std::string m_applied{}; //every setting as text, a change means rebuilding the weapons
 	float m_full_update_time{}; //settings changed, rebuild the weapons once they settle
 
 public:

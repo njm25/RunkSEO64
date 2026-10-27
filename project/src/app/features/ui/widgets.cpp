@@ -519,3 +519,65 @@ bool inputStringWithHint(const char *const label, std::string *const var, const 
 {
 	return ImGui::InputTextWithHint(label, hint, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var);
 }
+
+//==================================================================================================================================
+
+void beginPage(const char *const id, const float bottom_padding)
+{
+	ImGui::BeginChild(id, { 0.0f, -bottom_padding });
+}
+
+void endPage()
+{
+	ImGui::EndChild();
+}
+
+void beginColumn(const char *const id)
+{
+	ImGui::BeginChild(id, { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
+}
+
+void endColumn()
+{
+	ImGui::EndChild();
+}
+
+void nextColumn()
+{
+	ImGui::SameLine();
+}
+
+bool section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
+{
+	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY };
+
+	//width of 0 fills the available space instead of fitting the contents
+	if (width > 0.0f) {
+		flags |= ImGuiChildFlags_AutoResizeX;
+	}
+
+	ImGui::BeginChild(id, { width, 0.0f }, flags);
+	{
+		ImGui::PushItemWidth(item_width > 0.0f ? item_width : ImGui::GetContentRegionAvail().x);
+
+		ImGui::Text(title);
+		ImGui::Separator();
+
+		body();
+
+		ImGui::PopItemWidth();
+	}
+	ImGui::EndChild();
+
+	return ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+}
+
+void sep()
+{
+	ImGui::Separator();
+}
+
+void heading(const char *const text)
+{
+	ImGui::Text(text);
+}

@@ -10,3 +10,13 @@ bool sliderFloat(const char *const label, float *const var, float min, float max
 bool colorPicker(const char *const label, Color *const var);
 bool inputString(const char *const label, std::string *const var, const char *const fmt = "%s", int flags = 0);
 bool inputStringWithHint(const char *const label, std::string *const var, const char *const hint, const char *const fmt = "%s", int flags = 0);
+
+//layout
+void beginPage(const char *const id, const float bottom_padding);
+void endPage();
+void beginColumn(const char *const id);
+void endColumn();
+void nextColumn();
+bool section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width = 100.0f);
+void sep();
+void heading(const char *const text);

@@ -205,9 +205,9 @@ static bool widgetVisible(const char *const label, const void *const var)
 	return search_show_all || matchesSearch(widgetHaystack(cur_section, label, cfg_var));
 }
 
-bool customWidget(const char *const label)
+bool customWidget(const char *const label, const void *const var)
 {
-	return widgetVisible(label, nullptr);
+	return widgetVisible(label, var);
 }
 
 void setWidgetMode(const WidgetMode new_mode)
@@ -1496,4 +1496,9 @@ void heading(const char *const text)
 	if (mode == WidgetMode::DRAW) {
 		ImGui::TextUnformatted(text);
 	}
+}
+
+void settingContext(const char *const label, void *const var)
+{
+	widgetContext(label, var, nullptr);
 }

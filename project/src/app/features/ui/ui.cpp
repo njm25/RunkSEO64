@@ -1,5 +1,7 @@
 #include "ui.hpp"
 
+#include "ui_fonts.hpp"
+
 #include "../notifs/notifs.hpp"
 #include "../cfg.hpp"
 
@@ -18,6 +20,150 @@ static const Theme preset_themes[]
 static bool sameColor(const Color a, const Color b)
 {
 	return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+static const FontPreset preset_fonts[]
+{
+	{ "default", "tahoma.ttf", 13, 0, false, false, 0.0f, 0.0f, true },
+	{ "clean", "segoeui.ttf", 14, 2, false, false, 0.0f, 0.0f, true },
+	{ "compact", "verdana.ttf", 11, 0, false, false, 0.0f, -1.0f, true },
+	{ "big", "segoeui.ttf", 17, 2, false, false, 0.0f, 1.0f, true },
+	{ "mono", "consola.ttf", 13, 1, false, false, 0.0f, 0.0f, true },
+};
+
+void UI::loadFontPresets()
+{
+	m_font_presets.assign(std::begin(preset_fonts), std::end(preset_fonts));
+
+	std::ifstream file{ utils::getFilePath() + "fonts.json" };
+
+	if (!file.is_open()) {
+		return;
+	}
+
+	try
+	{
+		nlohmann::json j{};
+
+		file >> j;
+
+		for (const nlohmann::json &p : j)
+		{
+			FontPreset preset
+			{
+				p["name"].get<std::string>(),
+				p["font"].get<std::string>(),
+				p["size"].get<int>(),
+				p["smoothing"].get<int>(),
+				p["bold"].get<bool>(),
+				p["italic"].get<bool>(),
+				p["letter_spacing"].get<float>(),
+				p["row_spacing"].get<float>(),
+				false
+			};
+
+			if (!findFontPreset(preset.name)) {
+				m_font_presets.push_back(preset);
+			}
+		}
+	}
+
+	catch (const std::exception &e) {
+		notifs->warning(std::format("failed to load font presets ({})", e.what()));
+	}
+}
+
+void UI::saveFontPresets() const
+{
+	nlohmann::json j = nlohmann::json::array();
+
+	for (const FontPreset &p : m_font_presets)
+	{
+		if (p.preset) {
+			continue;
+		}
+
+		j.push_back({
+			{ "name", p.name }, { "font", p.font }, { "size", p.size }, { "smoothing", p.smoothing },
+			{ "bold", p.bold }, { "italic", p.italic }, { "letter_spacing", p.letter_spacing }, { "row_spacing", p.row_spacing }
+		});
+	}
+
+	std::ofstream file{ utils::getFilePath() + "fonts.json" };
+
+	file << std::setw(4) << j;
+}
+
+const FontPreset *UI::findFontPreset(std::string_view name) const
+{
+	for (const FontPreset &p : m_font_presets)
+	{
+		if (p.name == name) {
+			return &p;
+		}
+	}
+
+	return nullptr;
+}
+
+std::string UI::currentFontPresetName() const
+{
+	for (const FontPreset &p : m_font_presets)
+	{
+		const bool same_font{ p.font.size() == cfg::ui_font.size() && std::equal(p.font.begin(), p.font.end(), cfg::ui_font.begin(), [](const char a, const char b) {
+			return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+		}) };
+
+		if (same_font && p.size == cfg::ui_font_size && p.smoothing == cfg::ui_font_smoothing && p.bold == cfg::ui_font_bold && p.italic == cfg::ui_font_italic
+			&& p.letter_spacing == cfg::ui_font_letter_spacing && p.row_spacing == cfg::ui_font_row_spacing) {
+			return p.name;
+		}
+	}
+
+	return "custom";
+}
+
+void UI::applyFontPreset(const FontPreset &preset)
+{
+	cfg::ui_font = preset.font;
+	cfg::ui_font_size = preset.size;
+	cfg::ui_font_smoothing = preset.smoothing;
+	cfg::ui_font_bold = preset.bold;
+	cfg::ui_font_italic = preset.italic;
+	cfg::ui_font_letter_spacing = preset.letter_spacing;
+	cfg::ui_font_row_spacing = preset.row_spacing;
+}
+
+void UI::saveFontPreset(const std::string &name)
+{
+	const FontPreset preset{ name, cfg::ui_font, cfg::ui_font_size, cfg::ui_font_smoothing, cfg::ui_font_bold, cfg::ui_font_italic, cfg::ui_font_letter_spacing, cfg::ui_font_row_spacing, false };
+
+	for (FontPreset &p : m_font_presets)
+	{
+		if (p.name != name) {
+			continue;
+		}
+
+		//built in presets stay as they are
+		if (p.preset) {
+			return;
+		}
+
+		p = preset;
+		saveFontPresets();
+
+		return;
+	}
+
+	m_font_presets.push_back(preset);
+	saveFontPresets();
+}
+
+void UI::deleteFontPreset(const std::string &name)
+{
+	m_font_presets.erase(std::remove_if(m_font_presets.begin(), m_font_presets.end(), [&name](const FontPreset &p) { return !p.preset && p.name == name; }), m_font_presets.end());
+
+	saveFontPresets();
 }
 
 void UI::loadThemes()
@@ -186,31 +332,111 @@ bool UI::onLoad()
 		m_base_style = *style;
 	}
 
-	applyScale(std::clamp(cfg::ui_scale, 0.75f, 2.0f));
+	loadFontPresets();
+	applyFonts(wantedFontSpec());
 
 	return true;
 }
 
-//rebuilds the font at the new pixel size and scales every style size, has to happen outside of a frame
-void UI::applyScale(const float scale)
+FontSpec UI::wantedFontSpec() const
+{
+	return FontSpec
+	{
+		cfg::ui_font,
+		std::clamp(cfg::ui_font_size, 8, 32),
+		std::clamp(cfg::ui_font_smoothing, 0, 2),
+		cfg::ui_font_bold,
+		cfg::ui_font_italic,
+		std::clamp(cfg::ui_font_letter_spacing, -1.0f, 3.0f),
+		std::clamp(cfg::ui_font_row_spacing, -2.0f, 4.0f),
+		std::clamp(cfg::ui_scale, 0.75f, 2.0f),
+		m_preview_font_file
+	};
+}
+
+//rebuilds the font atlas and scales every style size, has to happen outside of a frame
+void UI::applyFonts(const FontSpec &spec)
 {
 	ImGuiIO &io{ ImGui::GetIO() };
 
-	ImFontConfig font_cfg{};
+	//whole pixel sizes keep the sharp font crisp
+	const float px{ std::floor(static_cast<float>(spec.size) * spec.scale + 0.5f) };
+
+	auto addFont = [&](const std::string &path) -> ImFont *
 	{
-		font_cfg.OversampleH = 1;
-		font_cfg.OversampleV = 1;
-		font_cfg.PixelSnapH = true;
-		font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Monochrome | ImGuiFreeTypeBuilderFlags_MonoHinting;
-	}
+		//imgui asserts on files that aren't fonts, so anything without a readable name table is turned away first
+		if (path.empty() || readFontName(path).empty()) {
+			return nullptr;
+		}
+
+		ImFontConfig font_cfg{};
+		{
+			font_cfg.OversampleH = 1;
+			font_cfg.OversampleV = 1;
+			font_cfg.PixelSnapH = true;
+			font_cfg.GlyphExtraSpacing.x = std::round(spec.letter_spacing * spec.scale);
+
+			if (spec.smoothing == 0) {
+				font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Monochrome | ImGuiFreeTypeBuilderFlags_MonoHinting;
+			}
+
+			else if (spec.smoothing == 2) {
+				font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LightHinting;
+			}
+
+			if (spec.bold) {
+				font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Bold;
+			}
+
+			if (spec.italic) {
+				font_cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_Oblique;
+			}
+		}
+
+		return io.Fonts->AddFontFromFileTTF(path.c_str(), px, &font_cfg);
+	};
 
 	io.Fonts->Clear();
+	m_preview_font = nullptr;
 
-	//whole pixel sizes keep the monochrome font crisp
-	io.FontDefault = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\TAHOMA.TTF", std::floor(13.0f * scale + 0.5f), &font_cfg);
+	//whichever font ends up as the menu font, empty for imgui's own
+	std::string main_path{ resolveFontPath(spec.font) };
 
-	if (!io.FontDefault) {
-		io.FontDefault = io.Fonts->AddFontDefault();
+	auto addMain = [&]() -> bool
+	{
+		io.FontDefault = main_path.empty() ? io.Fonts->AddFontDefault() : addFont(main_path);
+
+		return io.FontDefault && io.Fonts->Build();
+	};
+
+	//a missing or broken font falls back to tahoma, then to imgui's own font
+	if (main_path.empty() || !addMain())
+	{
+		notifs->warning(std::format("couldn't load the font '{}', using tahoma", spec.font));
+
+		io.Fonts->Clear();
+		main_path = resolveFontPath("tahoma.ttf");
+
+		if (!addMain()) {
+			io.Fonts->Clear();
+			main_path.clear();
+			addMain();
+		}
+	}
+
+	//the preview font goes in separately, so a broken one can't take the menu font down with it
+	if (!spec.preview.empty())
+	{
+		m_preview_font = addFont(resolveFontPath(spec.preview));
+
+		if (m_preview_font && !io.Fonts->Build())
+		{
+			m_preview_font = nullptr;
+
+			//clearing drops every font, so the menu font has to be added again
+			io.Fonts->Clear();
+			addMain();
+		}
 	}
 
 	//the backend recreates the font texture on its next NewFrame
@@ -219,9 +445,13 @@ void UI::applyScale(const float scale)
 	ImGuiStyle &style{ ImGui::GetStyle() };
 
 	style = m_base_style;
-	style.ScaleAllSizes(scale);
+	style.ScaleAllSizes(spec.scale);
+	style.ItemSpacing.y = std::max(0.0f, style.ItemSpacing.y + std::round(spec.row_spacing * spec.scale));
 
-	m_scale = scale;
+	m_scale = spec.scale;
+
+	//even when loading failed, so a bad font isn't retried every frame
+	m_font_spec = spec;
 }
 
 bool UI::onUnload()
@@ -333,9 +563,10 @@ void UI::start()
 		i::input_system->ResetInputState();
 	}
 
-	//waits for the scale slider to be let go, rebuilding the font every frame of a drag would crawl
-	if (const float scale{ std::clamp(cfg::ui_scale, 0.75f, 2.0f) }; scale != m_scale && !ImGui::IsAnyItemActive()) {
-		applyScale(scale);
+	//waits for the mouse to be let go so dragging a slider doesn't rebuild the font every frame,
+	//but not for a focused text field (the font picker's filter is focused while previews load)
+	if (const FontSpec spec{ wantedFontSpec() }; spec != m_font_spec && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+		applyFonts(spec);
 	}
 
 	float hue{};

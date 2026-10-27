@@ -416,6 +416,14 @@ MAKE_CFGVAR(ui_fade_unhovered, false);
 MAKE_CFGVAR(ui_fade_opacity, 0.5f);
 MAKE_CFGVAR(ui_animations, true);
 
+MAKE_CFGVAR(ui_font, std::string("tahoma.ttf")); //file in a fonts folder, or a full path
+MAKE_CFGVAR(ui_font_size, 13);
+MAKE_CFGVAR(ui_font_smoothing, 0); // (0 = sharp) (1 = smooth) (2 = smooth, light hinting)
+MAKE_CFGVAR(ui_font_bold, false);
+MAKE_CFGVAR(ui_font_italic, false);
+MAKE_CFGVAR(ui_font_letter_spacing, 0.0f);
+MAKE_CFGVAR(ui_font_row_spacing, 0.0f);
+
 MAKE_CFGVAR(ui_pos_menu_x, 400.0f);
 MAKE_CFGVAR(ui_pos_menu_y, 200.0f);
 

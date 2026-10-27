@@ -164,6 +164,7 @@
     <ClCompile Include="src\app\features\ui\menu_players.cpp" />
     <ClCompile Include="src\app\features\ui\menu_configs.cpp" />
     <ClCompile Include="src\app\features\ui\configs.cpp" />
+    <ClCompile Include="src\app\features\ui\ui_fonts.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
     <ClCompile Include="src\app\features\ui\tooltips.cpp" />
@@ -250,6 +251,7 @@
     <ClInclude Include="src\app\features\ui\widgets.hpp" />
     <ClInclude Include="src\app\features\ui\tooltips.hpp" />
     <ClInclude Include="src\app\features\ui\configs.hpp" />
+    <ClInclude Include="src\app\features\ui\ui_fonts.hpp" />
     <ClInclude Include="src\app\features\player_list\player_list.hpp" />
     <ClInclude Include="src\app\features\strafe_pred\strafe_pred.hpp" />
     <ClInclude Include="src\app\features\tick_base\tick_base.hpp" />

@@ -58,6 +58,11 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "ui_bg_opacity", "how see-through the menu and its windows are" },
 	{ "ui_fade_unhovered", "fade the whole menu while the mouse isn't over it" },
 	{ "ui_fade_opacity", "how faded the menu gets while the mouse is elsewhere" },
+	{ "ui_font", "font the menu is drawn with, hover one in the list to preview it" },
+	{ "ui_font_size", "font size before the ui scale is applied" },
+	{ "ui_font_smoothing", "sharp is pixel perfect, smooth is anti-aliased like the rest of windows" },
+	{ "ui_font_letter_spacing", "extra space between letters" },
+	{ "ui_font_row_spacing", "extra space between rows of settings" },
 	{ "ui_scale", "size of the menu and its text, applied once you let go of the slider" },
 };
 

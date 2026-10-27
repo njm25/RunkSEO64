@@ -1,6 +1,7 @@
 #include "menu.hpp"
 #include "widgets.hpp"
 #include "ui.hpp"
+#include "ui_fonts.hpp"
 
 #include "../notifs/notifs.hpp"
 #include "../entity_visuals/entity_visuals.hpp"
@@ -68,6 +69,216 @@ static void resetLayout()
 	}
 
 	notifs->message("reset window layout");
+}
+
+static const char *const font_sample{ "the quick brown fox jumps over the lazy dog 0123456789" };
+
+static bool containsNoCase(std::string_view haystack, std::string_view needle)
+{
+	return std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](const char a, const char b) {
+		return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+	}) != haystack.end();
+}
+
+static bool sameFontFile(std::string_view a, std::string_view b)
+{
+	return a.size() == b.size() && containsNoCase(a, b);
+}
+
+//one entry in the font picker, hovering it loads the font so a sample can be shown in it
+static void fontEntry(const FontFile &font)
+{
+	if (ImGui::Selectable(font.name.c_str(), sameFontFile(font.file, cfg::ui_font))) {
+		cfg::ui_font = font.file;
+	}
+
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+	{
+		ui->previewFont(font.file);
+
+		ImGui::BeginTooltip();
+
+		if (ImFont *const preview{ ui->getPreviewFont(font.file) }) {
+			ImGui::PushFont(preview);
+			ImGui::TextUnformatted(font_sample);
+			ImGui::PopFont();
+		}
+
+		else {
+			ImGui::TextDisabled("loading preview...");
+		}
+
+		ImGui::TextDisabled("%s", font.file.c_str());
+
+		ImGui::EndTooltip();
+	}
+}
+
+static void fontPicker()
+{
+	if (ImGui::BeginCombo("font", fontDisplayName(cfg::ui_font).c_str(), ImGuiComboFlags_HeightLarge))
+	{
+		static std::string filter{};
+
+		if (ImGui::IsWindowAppearing()) {
+			filter.clear();
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		inputStringWithHint("##font_filter", &filter, "filter");
+
+		const std::vector<FontFile> &fonts{ installedFonts() };
+
+		//the ones that suit a dense menu, up top
+		static const char *const recommended[]{ "tahoma.ttf", "segoeui.ttf", "verdana.ttf", "bahnschrift.ttf", "consola.ttf" };
+
+		ImGui::PushID("recommended");
+
+		bool any_recommended{};
+
+		for (const char *const file : recommended)
+		{
+			for (const FontFile &font : fonts)
+			{
+				if (sameFontFile(font.file, file) && containsNoCase(font.name, filter)) {
+					fontEntry(font);
+					any_recommended = true;
+				}
+			}
+		}
+
+		ImGui::PopID();
+
+		if (any_recommended) {
+			ImGui::Separator();
+		}
+
+		ImGui::PushID("all");
+
+		for (const FontFile &font : fonts)
+		{
+			if (containsNoCase(font.name, filter)) {
+				fontEntry(font);
+			}
+		}
+
+		ImGui::PopID();
+
+		if (fonts.empty()) {
+			ImGui::TextDisabled("no fonts found");
+		}
+
+		if (ImGui::Selectable("rescan fonts folder", false, ImGuiSelectableFlags_NoAutoClosePopups)) {
+			installedFonts(true);
+		}
+
+		ImGui::EndCombo();
+	}
+
+	settingContext("font", &cfg::ui_font);
+}
+
+//any font file by path, for fonts that aren't installed
+static void customFontInput()
+{
+	static std::string path{};
+
+	inputStringWithHint("##custom_font", &path, "or a .ttf/.otf path");
+
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+		ImGui::SetTooltip("full path to a font file, press enter to use it");
+	}
+
+	if (!(ImGui::IsItemDeactivated() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) || path.empty()) {
+		return;
+	}
+
+	//pasted paths often come quoted
+	std::erase(path, '"');
+
+	if (const std::string resolved{ resolveFontPath(path) }; resolved.empty() || readFontName(resolved).empty()) {
+		notifs->warning(std::format("'{}' isn't a font file", path));
+	}
+
+	else {
+		cfg::ui_font = path;
+		path.clear();
+	}
+}
+
+static void fontPresetCombo()
+{
+	const std::string current{ ui->currentFontPresetName() };
+
+	if (ImGui::BeginCombo("preset", current.c_str()))
+	{
+		std::string to_delete{};
+
+		for (const FontPreset &preset : ui->getFontPresets())
+		{
+			ImGui::PushID(preset.name.c_str());
+
+			if (ImGui::Selectable(preset.name.c_str(), preset.name == current)) {
+				ui->applyFontPreset(preset);
+			}
+
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+				ImGui::SetTooltip("%s, %dpx%s", fontDisplayName(preset.font).c_str(), preset.size, preset.smoothing == 0 ? ", sharp" : ", smooth");
+			}
+
+			if (!preset.preset && ImGui::BeginPopupContextItem("font_preset_popup_context"))
+			{
+				if (ImGui::MenuItem("delete")) {
+					to_delete = preset.name;
+				}
+
+				ImGui::EndPopup();
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndCombo();
+
+		if (!to_delete.empty()) {
+			confirm(std::format("delete the font preset '{}'?", to_delete), [to_delete]() { ui->deleteFontPreset(to_delete); });
+		}
+	}
+}
+
+static void fontPresetSaveInput()
+{
+	static std::string name{};
+
+	inputStringWithHint("##font_preset_name", &name, "save as preset");
+
+	if (!(ImGui::IsItemDeactivated() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) || name.empty()) {
+		return;
+	}
+
+	const FontPreset *const existing{ ui->findFontPreset(name) };
+
+	if (existing && existing->preset) {
+		notifs->warning(std::format("'{}' is a built in preset", name));
+		return;
+	}
+
+	auto save = [preset_name = name]()
+	{
+		ui->saveFontPreset(preset_name);
+		notifs->message(std::format("saved font preset '{}'", preset_name));
+	};
+
+	if (existing) {
+		confirm(std::format("overwrite the font preset '{}'?", name), save);
+	}
+
+	else {
+		save();
+	}
+
+	name.clear();
 }
 
 static void themeSaveInput()
@@ -1166,6 +1377,42 @@ void Menu::pageVisualsColors()
 					if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
 						ImGui::SetTooltip("move the menu, binds list and minimap back to their default spots and sizes");
 					}
+				}
+			});
+
+			section("fonts", "fonts", 180.0f, []
+			{
+				if (customWidget("preset")) {
+					fontPresetCombo();
+				}
+
+				if (customWidget("save as preset")) {
+					fontPresetSaveInput();
+				}
+
+				sep();
+
+				if (customWidget("font", &cfg::ui_font)) {
+					fontPicker();
+				}
+
+				if (customWidget("custom font file", &cfg::ui_font)) {
+					customFontInput();
+				}
+
+				sliderInt("size", &cfg::ui_font_size, 10, 20, "%dpx");
+				selectSingle("smoothing", &cfg::ui_font_smoothing, { { "sharp", 0 }, { "smooth", 1 }, { "smooth (light hinting)", 2 } });
+				toggle("bold", &cfg::ui_font_bold);
+				toggle("italic", &cfg::ui_font_italic);
+
+				sep();
+
+				sliderFloat("letter spacing", &cfg::ui_font_letter_spacing, -1.0f, 2.0f, "%.0fpx");
+				sliderFloat("row spacing", &cfg::ui_font_row_spacing, -2.0f, 2.0f, "%.0fpx");
+
+				if (customWidget("sample")) {
+					sep();
+					ImGui::TextWrapped("%s", font_sample);
 				}
 			});
 		}

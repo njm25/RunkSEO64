@@ -37,6 +37,10 @@ void Binds::save(const std::string &path)
 
         b["appear_in_bindslist"] = bind.appear_in_bindslist;
 
+		if (bind.has_range) {
+			b["range"] = { bind.range_min, bind.range_max };
+		}
+
 		if (!bind.selects.empty())
 		{
 			nlohmann::json selects{};
@@ -140,6 +144,13 @@ void Binds::load(const std::string &path)
 		
         bind.appear_in_bindslist = b["appear_in_bindslist"].get<bool>();
 
+		//binds saved before ranges were stored just don't have one
+		if (b.contains("range") && b["range"].size() == 2) {
+			bind.has_range = true;
+			bind.range_min = b["range"][0].get<float>();
+			bind.range_max = b["range"][1].get<float>();
+		}
+
 		m_binds.push_back(bind);
 	}
 }
@@ -155,7 +166,37 @@ void Binds::add(const Bind bind)
 {
 	m_binds.push_back(bind);
 
+	save();
+}
+
+void Binds::save()
+{
 	save(utils::getFilePath() + "binds.json");
+}
+
+void Binds::removeAt(const size_t index)
+{
+	if (index >= m_binds.size()) {
+		return;
+	}
+
+	m_binds.erase(m_binds.begin() + index);
+
+	save();
+}
+
+void Binds::move(const size_t from, const size_t to)
+{
+	if (from >= m_binds.size() || to >= m_binds.size() || from == to) {
+		return;
+	}
+
+	const Bind bind{ m_binds[from] };
+
+	m_binds.erase(m_binds.begin() + from);
+	m_binds.insert(m_binds.begin() + to, bind);
+
+	save();
 }
 
 void Binds::remove(Bind *const bind_ptr)

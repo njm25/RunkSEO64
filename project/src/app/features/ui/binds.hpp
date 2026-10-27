@@ -20,6 +20,11 @@ public:
 	std::string fmt{}; //ints & floats
 	std::vector<std::pair<std::string, int>> selects{}; //selectsingle
 	bool appear_in_bindslist{ true };
+
+	//slider range, so values can be edited with the same limits later
+	bool has_range{};
+	float range_min{};
+	float range_max{};
 };
 
 class Binds final : public HasLoad
@@ -36,6 +41,12 @@ public:
 
 public:
 	void add(const Bind bind);
+	void save();
+
+public:
+	std::vector<Bind> &getBinds() { return m_binds; }
+	void removeAt(const size_t index);
+	void move(const size_t from, const size_t to);
 
 private:
 	void remove(Bind *const bind_ptr);

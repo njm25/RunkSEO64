@@ -56,6 +56,7 @@ void Menu::run()
 			tabItem("visuals", m_tab, MenuTab::VISUALS);
 			tabItem("misc", m_tab, MenuTab::MISC);
 			tabItem("players", m_tab, MenuTab::PLAYERS);
+			tabItem("binds", m_tab, MenuTab::BINDS);
 			tabItem("configs", m_tab, MenuTab::CONFIGS);
 
 			if (!m_search.empty()) {
@@ -93,6 +94,11 @@ void Menu::run()
 
 					case MenuTab::PLAYERS: {
 						tabPlayers();
+						break;
+					}
+
+					case MenuTab::BINDS: {
+						tabBinds();
 						break;
 					}
 

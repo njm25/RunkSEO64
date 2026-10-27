@@ -4,7 +4,7 @@
 
 enum class MenuTab
 {
-	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, CONFIGS
+	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, CONFIGS
 };
 
 enum class AimbotTab
@@ -69,6 +69,7 @@ private:
 
 	void tabMisc();
 	void tabPlayers();
+	void tabBinds();
 	void tabConfigs();
 
 public:

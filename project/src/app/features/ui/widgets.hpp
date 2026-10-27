@@ -2,6 +2,9 @@
 
 #include "../../../game/game.hpp"
 
+struct Bind;
+enum class BindType;
+
 enum class WidgetMode
 {
 	DRAW,     //normal menu
@@ -40,3 +43,9 @@ void setSearchQuery(std::string_view query);
 void setSearchPath(std::string_view path);
 bool searchGotoClicked();
 int searchResultCount();
+
+//binds
+ImVec4 warningColor();
+bool editBindType(const char *const id, BindType *const type);
+bool editBindValue(const char *const id, const Bind &bind, std::any *const val);
+std::string bindKeyUsers(const int key, const Bind *const ignore); //names of the binds using a key, comma separated

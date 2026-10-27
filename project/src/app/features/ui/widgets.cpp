@@ -3,6 +3,7 @@
 #include "tooltips.hpp"
 
 #include "../notifs/notifs.hpp"
+#include "../cfg.hpp"
 
 enum class WidgetType
 {
@@ -449,6 +450,156 @@ static int resizeCallback(ImGuiInputTextCallbackData *data)
 	return 0;
 }
 
+ImVec4 warningColor()
+{
+	const Color clr{ cfg::color_notifs_style_warning };
+
+	return { clr.r / 255.0f, clr.g / 255.0f, clr.b / 255.0f, 1.0f };
+}
+
+bool editBindType(const char *const id, BindType *const type)
+{
+	bool changed{};
+
+	if (ImGui::BeginCombo(id, *type == BindType::TOGGLE ? "toggle" : "hold"))
+	{
+		if (ImGui::Selectable("toggle", *type == BindType::TOGGLE)) {
+			*type = BindType::TOGGLE;
+			changed = true;
+		}
+
+		if (ImGui::Selectable("hold", *type == BindType::HOLD)) {
+			*type = BindType::HOLD;
+			changed = true;
+		}
+
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+bool editBindValue(const char *const id, const Bind &bind, std::any *const val)
+{
+	if (!bind.var || !val) {
+		return false;
+	}
+
+	bool changed{};
+
+	const size_t type{ bind.var->hash() };
+
+	ImGui::PushID(id);
+
+	if (type == typeid(bool).hash_code())
+	{
+		const bool cur{ std::any_cast<bool>(*val) };
+
+		if (ImGui::BeginCombo("##value", cur ? "true" : "false"))
+		{
+			for (const bool option : { false, true })
+			{
+				if (ImGui::Selectable(option ? "true" : "false", cur == option)) {
+					*val = option;
+					changed = true;
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+	}
+
+	else if (type == typeid(int).hash_code() && !bind.selects.empty())
+	{
+		const int cur{ std::any_cast<int>(*val) };
+
+		const char *preview{ "" };
+
+		for (const std::pair<std::string, int> &select : bind.selects)
+		{
+			if (select.second == cur) {
+				preview = select.first.c_str();
+			}
+		}
+
+		if (ImGui::BeginCombo("##value", preview))
+		{
+			for (const std::pair<std::string, int> &select : bind.selects)
+			{
+				if (ImGui::Selectable(select.first.c_str(), select.second == cur)) {
+					*val = select.second;
+					changed = true;
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+	}
+
+	//sliders update the value live but only count as changed once let go, so the binds file isn't written every frame of a drag
+	else if (type == typeid(int).hash_code())
+	{
+		int cur{ std::any_cast<int>(*val) };
+
+		const char *const fmt{ bind.fmt.empty() ? "%d" : bind.fmt.c_str() };
+
+		const bool edited{ bind.has_range
+			? ImGui::SliderInt("##value", &cur, static_cast<int>(bind.range_min), static_cast<int>(bind.range_max), fmt, ImGuiSliderFlags_AlwaysClamp)
+			: ImGui::DragInt("##value", &cur, 0.1f, 0, 0, fmt) };
+
+		if (edited) {
+			*val = cur;
+		}
+
+		changed = ImGui::IsItemDeactivatedAfterEdit();
+	}
+
+	else if (type == typeid(float).hash_code())
+	{
+		float cur{ std::any_cast<float>(*val) };
+
+		const char *const fmt{ bind.fmt.empty() ? "%.2f" : bind.fmt.c_str() };
+
+		const bool edited{ bind.has_range
+			? ImGui::SliderFloat("##value", &cur, bind.range_min, bind.range_max, fmt, ImGuiSliderFlags_AlwaysClamp)
+			: ImGui::DragFloat("##value", &cur, 0.01f, 0.0f, 0.0f, fmt) };
+
+		if (edited) {
+			*val = cur;
+		}
+
+		changed = ImGui::IsItemDeactivatedAfterEdit();
+	}
+
+	ImGui::PopID();
+
+	return changed;
+}
+
+std::string bindKeyUsers(const int key, const Bind *const ignore)
+{
+	std::string users{};
+
+	if (!key) {
+		return users;
+	}
+
+	for (const Bind &bind : binds->getBinds())
+	{
+		if (&bind == ignore || bind.key != key) {
+			continue;
+		}
+
+		if (!users.empty()) {
+			users += ", ";
+		}
+
+		users += bind.name;
+	}
+
+	return users;
+}
+
 static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *const ctx, const std::string &name, const std::optional<BindType> open_type)
 {
 	static Bind bind_data{};
@@ -469,145 +620,59 @@ static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *cons
 		bind_data.cfg_var_name = cfg_var->name();
 		bind_data.appear_in_bindslist = true;
 
+		if (ctx->m_type == WidgetType::SELECT_SINGLE) {
+			bind_data.selects = static_cast<WidgetCtxSelectSingle *>(ctx)->m_vars;
+		}
+
+		else if (ctx->m_type == WidgetType::SLIDER_INT)
+		{
+			const WidgetCtxSliderInt *const slider{ static_cast<WidgetCtxSliderInt *>(ctx) };
+
+			bind_data.fmt = slider->m_fmt;
+			bind_data.has_range = true;
+			bind_data.range_min = static_cast<float>(slider->m_val_min);
+			bind_data.range_max = static_cast<float>(slider->m_val_max);
+		}
+
+		else if (ctx->m_type == WidgetType::SLIDER_FLOAT)
+		{
+			const WidgetCtxSliderFloat *const slider{ static_cast<WidgetCtxSliderFloat *>(ctx) };
+
+			bind_data.fmt = slider->m_fmt;
+			bind_data.has_range = true;
+			bind_data.range_min = slider->m_val_min;
+			bind_data.range_max = slider->m_val_max;
+		}
+
 		//straight into waiting for a key
 		listen = true;
 	}
 
 	if (ImGui::BeginPopup("bind_popup_bind"))
 	{
-		ImGui::Text(std::format("binding {}", cfg_var->name()).c_str());
+		ImGui::TextUnformatted(std::format("binding {}", cfg_var->name()).c_str());
 
 		ImGui::Separator();
+
+		const float label_w{ ImGui::CalcTextSize("off").x + ImGui::GetStyle().ItemSpacing.x * 2.0f };
 
 		ImGui::InputTextWithHint("##bind_name", "name", bind_data.name.data(), bind_data.name.capacity() + 1, ImGuiInputTextFlags_CallbackResize, resizeCallback, &bind_data.name);
 
 		inputKey(&bind_data.key, listen);
 
-		if (ImGui::BeginCombo("##bind_type", bind_data.type == BindType::TOGGLE ? "toggle" : "hold"))
-		{
-			if (ImGui::Selectable("toggle", bind_data.type == BindType::TOGGLE)) {
-				bind_data.type = BindType::TOGGLE;
-			}
-
-			if (ImGui::Selectable("hold", bind_data.type == BindType::HOLD)) {
-				bind_data.type = BindType::HOLD;
-			}
-
-			ImGui::EndCombo();
+		if (const std::string users{ bindKeyUsers(bind_data.key, nullptr) }; !users.empty()) {
+			ImGui::TextColored(warningColor(), "also bound to: %s", users.c_str());
 		}
 
-		if (ctx->m_type == WidgetType::TOGGLE)
-		{
-			if (ImGui::BeginCombo("##val_off", std::any_cast<bool>(bind_data.val_off) ? "true" : "false"))
-			{
-				if (ImGui::Selectable("false", std::any_cast<bool>(bind_data.val_off) == false)) {
-					bind_data.val_off = std::make_any<bool>(false);
-				}
+		editBindType("##bind_type", &bind_data.type);
 
-				if (ImGui::Selectable("true", std::any_cast<bool>(bind_data.val_off) == true)) {
-					bind_data.val_off = std::make_any<bool>(true);
-				}
+		ImGui::TextDisabled("off");
+		ImGui::SameLine(label_w);
+		editBindValue("val_off", bind_data, &bind_data.val_off);
 
-				ImGui::EndCombo();
-			}
-
-			if (ImGui::BeginCombo("##val_on", std::any_cast<bool>(bind_data.val_on) ? "true" : "false"))
-			{
-				if (ImGui::Selectable("false", std::any_cast<bool>(bind_data.val_on) == false)) {
-					bind_data.val_on = std::make_any<bool>(false);
-				}
-
-				if (ImGui::Selectable("true", std::any_cast<bool>(bind_data.val_on) == true)) {
-					bind_data.val_on = std::make_any<bool>(true);
-				}
-
-				ImGui::EndCombo();
-			}
-		}
-
-		else if (ctx->m_type == WidgetType::SELECT_SINGLE)
-		{
-			WidgetCtxSelectSingle *const select{ static_cast<WidgetCtxSelectSingle *>(ctx) };
-
-			auto valToSelect = [&](const int val)
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (v.second != val) {
-						continue;
-					}
-
-					return v;
-				}
-
-				return std::pair<std::string, int>{};
-			};
-
-			const std::pair<std::string, int> cur_off{ valToSelect(std::any_cast<int>(bind_data.val_off)) };
-			const std::pair<std::string, int> cur_on{ valToSelect(std::any_cast<int>(bind_data.val_on)) };
-
-			if (ImGui::BeginCombo("##val_off", cur_off.first.c_str()))
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (ImGui::Selectable(v.first.c_str(), std::any_cast<int>(bind_data.val_off) == v.second)) {
-						bind_data.val_off = std::make_any<int>(v.second);
-					}
-				}
-
-				ImGui::EndCombo();
-			}
-
-			if (ImGui::BeginCombo("##val_on", cur_on.first.c_str()))
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (ImGui::Selectable(v.first.c_str(), std::any_cast<int>(bind_data.val_on) == v.second)) {
-						bind_data.val_on = std::make_any<int>(v.second);
-					}
-				}
-
-				ImGui::EndCombo();
-			}
-		}
-
-		else if (ctx->m_type == WidgetType::SLIDER_INT)
-		{
-			WidgetCtxSliderInt *const slider{ static_cast<WidgetCtxSliderInt *>(ctx) };
-
-			static int slider_off{};
-			static int slider_on{};
-
-			slider_off = std::any_cast<int>(bind_data.val_off);
-			slider_on = std::any_cast<int>(bind_data.val_on);
-
-			if (ImGui::SliderInt("##val_off", &slider_off, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_off = std::make_any<int>(slider_off);
-			}
-
-			if (ImGui::SliderInt("##val_on", &slider_on, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_on = std::make_any<int>(slider_on);
-			}
-		}
-
-		else if (ctx->m_type == WidgetType::SLIDER_FLOAT)
-		{
-			WidgetCtxSliderFloat *const slider{ static_cast<WidgetCtxSliderFloat *>(ctx) };
-
-			static float slider_off{};
-			static float slider_on{};
-
-			slider_off = std::any_cast<float>(bind_data.val_off);
-			slider_on = std::any_cast<float>(bind_data.val_on);
-
-			if (ImGui::SliderFloat("##val_off", &slider_off, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_off = std::make_any<float>(slider_off);
-			}
-
-			if (ImGui::SliderFloat("##val_on", &slider_on, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_on = std::make_any<float>(slider_on);
-			}
-		}
+		ImGui::TextDisabled("on");
+		ImGui::SameLine(label_w);
+		editBindValue("val_on", bind_data, &bind_data.val_on);
 
 		ImGui::Separator();
 
@@ -617,7 +682,7 @@ static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *cons
 
 		ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2{ 0.0f, 0.5f });
 
-		if (!std::string_view{ bind_data.name.data() }.empty() && bind_data.key != 0)
+		if (!bind_data.name.empty() && bind_data.key != 0)
 		{
 			if (ImGui::Button("save", ImVec2{ ImGui::GetContentRegionAvail().x, 0.0f }))
 			{
@@ -625,19 +690,12 @@ static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *cons
 					*static_cast<bool *>(var) = std::any_cast<bool>(bind_data.val_off);
 				}
 
-				else if (ctx->m_type == WidgetType::SELECT_SINGLE) {
+				else if (ctx->m_type == WidgetType::SELECT_SINGLE || ctx->m_type == WidgetType::SLIDER_INT) {
 					*static_cast<int *>(var) = std::any_cast<int>(bind_data.val_off);
-					bind_data.selects = static_cast<WidgetCtxSelectSingle *>(ctx)->m_vars;
-				}
-
-				else if (ctx->m_type == WidgetType::SLIDER_INT) {
-					*static_cast<int *>(var) = std::any_cast<int>(bind_data.val_off);
-					bind_data.fmt = static_cast<WidgetCtxSliderInt *>(ctx)->m_fmt;
 				}
 
 				else if (ctx->m_type == WidgetType::SLIDER_FLOAT) {
 					*static_cast<float *>(var) = std::any_cast<float>(bind_data.val_off);
-					bind_data.fmt = static_cast<WidgetCtxSliderFloat *>(ctx)->m_fmt;
 				}
 
 				binds->add(bind_data);

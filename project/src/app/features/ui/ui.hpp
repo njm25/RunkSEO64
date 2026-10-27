@@ -33,10 +33,20 @@ struct FontPreset final
 	bool preset{};
 };
 
+//everything a theme sets
+struct ThemeValues final
+{
+	Color base{};
+	bool accent_custom{};
+	Color accent{};
+
+	bool operator==(const ThemeValues &other) const;
+};
+
 struct Theme final
 {
 	std::string name{};
-	Color color{};
+	ThemeValues values{};
 	bool preset{};
 };
 
@@ -47,7 +57,7 @@ private:
 
 private:
 	std::vector<Theme> m_themes{};
-	std::optional<Color> m_preview_color{};
+	std::optional<ThemeValues> m_preview_theme{};
 
 private:
 	ImGuiStyle m_base_style{}; //unscaled
@@ -76,12 +86,15 @@ public:
 public:
 	const std::vector<Theme> &getThemes() const { return m_themes; }
 	const Theme *findTheme(std::string_view name) const;
-	std::string themeName(const Color clr) const; //"custom" when no theme uses the color
-	void saveTheme(const std::string &name, const Color clr);
+	std::string themeName(const ThemeValues &values) const; //"custom" when no theme matches
+	void saveTheme(const std::string &name, const ThemeValues &values);
 	void deleteTheme(const std::string &name);
 
-	//draws the next frame with this base color instead of the configured one
-	void previewColor(const Color clr) { m_preview_color = clr; }
+	ThemeValues currentTheme() const; //from the theme settings
+	void applyTheme(const ThemeValues &values); //to the theme settings
+
+	//draws the next frame with this theme instead of the configured one
+	void previewTheme(const ThemeValues &values) { m_preview_theme = values; }
 
 public:
 	//loads a font file next to the menu font so it can be shown in the font picker, nullptr until it's ready
@@ -100,7 +113,7 @@ public:
 	bool onUnload() override;
 
 private:
-	void setColors(const float hue, const float sat, const float val);
+	void setColors(const ThemeValues &theme);
 
 public:
 	void start();

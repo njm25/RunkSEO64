@@ -7,19 +7,52 @@
 
 static const Theme preset_themes[]
 {
-	{ "default", Color{ 100, 100, 100, 255 }, true },
-	{ "midnight", Color{ 60, 80, 140, 255 }, true },
-	{ "ocean", Color{ 40, 110, 130, 255 }, true },
-	{ "forest", Color{ 60, 120, 70, 255 }, true },
-	{ "amber", Color{ 150, 110, 40, 255 }, true },
-	{ "crimson", Color{ 140, 50, 60, 255 }, true },
-	{ "rose", Color{ 150, 80, 110, 255 }, true },
-	{ "amethyst", Color{ 110, 70, 140, 255 }, true },
+	{ "default", { Color{ 100, 100, 100, 255 } }, true },
+	{ "midnight", { Color{ 60, 80, 140, 255 } }, true },
+	{ "ocean", { Color{ 40, 110, 130, 255 } }, true },
+	{ "forest", { Color{ 60, 120, 70, 255 } }, true },
+	{ "amber", { Color{ 150, 110, 40, 255 } }, true },
+	{ "crimson", { Color{ 140, 50, 60, 255 } }, true },
+	{ "rose", { Color{ 150, 80, 110, 255 } }, true },
+	{ "amethyst", { Color{ 110, 70, 140, 255 } }, true },
+	{ "graphite red", { Color{ 75, 75, 80, 255 }, true, Color{ 230, 70, 80, 255 } }, true },
+	{ "graphite blue", { Color{ 75, 75, 80, 255 }, true, Color{ 70, 150, 240, 255 } }, true },
 };
 
 static bool sameColor(const Color a, const Color b)
 {
 	return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+static nlohmann::json colorToJson(const Color clr)
+{
+	return { clr.r, clr.g, clr.b, clr.a };
+}
+
+static Color colorFromJson(const nlohmann::json &j)
+{
+	return Color{ j[0].get<uint8_t>(), j[1].get<uint8_t>(), j[2].get<uint8_t>(), j[3].get<uint8_t>() };
+}
+
+bool ThemeValues::operator==(const ThemeValues &other) const
+{
+	//the accent only matters when it's in use
+	return sameColor(base, other.base) && accent_custom == other.accent_custom && (!accent_custom || sameColor(accent, other.accent));
+}
+
+ThemeValues UI::currentTheme() const
+{
+	return ThemeValues{ cfg::ui_color_base, cfg::ui_accent_custom, cfg::ui_color_accent };
+}
+
+void UI::applyTheme(const ThemeValues &values)
+{
+	cfg::ui_color_base = values.base;
+	cfg::ui_accent_custom = values.accent_custom;
+
+	if (values.accent_custom) {
+		cfg::ui_color_accent = values.accent;
+	}
 }
 
 static const FontPreset preset_fonts[]
@@ -190,7 +223,16 @@ void UI::loadThemes()
 				continue;
 			}
 
-			m_themes.push_back(Theme{ name, Color{ t["color"][0], t["color"][1], t["color"][2], t["color"][3] }, false });
+			//themes saved before there was more than a base color only have "color"
+			ThemeValues values{ colorFromJson(t["color"]) };
+
+			values.accent_custom = t.value("accent_custom", false);
+
+			if (t.contains("accent")) {
+				values.accent = colorFromJson(t["accent"]);
+			}
+
+			m_themes.push_back(Theme{ name, values, false });
 		}
 	}
 
@@ -209,7 +251,12 @@ void UI::saveThemes() const
 			continue;
 		}
 
-		j.push_back({ { "name", theme.name }, { "color", { theme.color.r, theme.color.g, theme.color.b, theme.color.a } } });
+		j.push_back({
+			{ "name", theme.name },
+			{ "color", colorToJson(theme.values.base) },
+			{ "accent_custom", theme.values.accent_custom },
+			{ "accent", colorToJson(theme.values.accent) },
+		});
 	}
 
 	std::ofstream file{ utils::getFilePath() + "themes.json" };
@@ -229,11 +276,11 @@ const Theme *UI::findTheme(std::string_view name) const
 	return nullptr;
 }
 
-std::string UI::themeName(const Color clr) const
+std::string UI::themeName(const ThemeValues &values) const
 {
 	for (const Theme &theme : m_themes)
 	{
-		if (sameColor(theme.color, clr)) {
+		if (theme.values == values) {
 			return theme.name;
 		}
 	}
@@ -241,7 +288,7 @@ std::string UI::themeName(const Color clr) const
 	return "custom";
 }
 
-void UI::saveTheme(const std::string &name, const Color clr)
+void UI::saveTheme(const std::string &name, const ThemeValues &values)
 {
 	for (Theme &theme : m_themes)
 	{
@@ -254,13 +301,13 @@ void UI::saveTheme(const std::string &name, const Color clr)
 			return;
 		}
 
-		theme.color = clr;
+		theme.values = values;
 		saveThemes();
 
 		return;
 	}
 
-	m_themes.push_back(Theme{ name, clr, false });
+	m_themes.push_back(Theme{ name, values, false });
 	saveThemes();
 }
 
@@ -464,8 +511,14 @@ bool UI::onUnload()
 	return true;
 }
 
-void UI::setColors(const float hue, const float sat, const float val)
+void UI::setColors(const ThemeValues &theme)
 {
+	float hue{};
+	float sat{};
+	float val{};
+
+	utils::rgbToHSV(theme.base, hue, sat, val);
+
 	if (ImVec4 *const colors{ ImGui::GetStyle().Colors })
 	{
 		auto getColor = [&](float h, float s, float v)
@@ -553,6 +606,33 @@ void UI::setColors(const float hue, const float sat, const float val)
 		colors[ImGuiCol_TableHeaderBg] = getColor(hue, 0.80f, 0.16f);
 		colors[ImGuiCol_TableRowBg] = getColor(hue, 0.80f, 0.16f);
 		colors[ImGuiCol_TableRowBgAlt] = getColor(hue, 0.80f, 0.16f);
+		colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_CheckMark];
+
+		//a separate accent for everything that marks something as on, selected or focused
+		if (theme.accent_custom)
+		{
+			const ImVec4 accent{ theme.accent.r / 255.0f, theme.accent.g / 255.0f, theme.accent.b / 255.0f, 1.0f };
+
+			auto withAlpha = [&accent](const float a) {
+				return ImVec4{ accent.x, accent.y, accent.z, a };
+			};
+
+			auto scaled = [&accent](const float f) {
+				return ImVec4{ accent.x * f, accent.y * f, accent.z * f, 1.0f };
+			};
+
+			colors[ImGuiCol_CheckMark] = accent;
+			colors[ImGuiCol_SliderGrab] = scaled(0.85f);
+			colors[ImGuiCol_SliderGrabActive] = accent;
+			colors[ImGuiCol_TabSelectedOverline] = accent;
+			colors[ImGuiCol_Header] = withAlpha(0.35f);
+			colors[ImGuiCol_HeaderActive] = withAlpha(0.5f);
+			colors[ImGuiCol_TextSelectedBg] = withAlpha(0.35f);
+			colors[ImGuiCol_NavHighlight] = accent;
+			colors[ImGuiCol_DragDropTarget] = accent;
+			colors[ImGuiCol_ResizeGripActive] = accent;
+			colors[ImGuiCol_SeparatorActive] = accent;
+		}
 	}
 }
 
@@ -569,15 +649,11 @@ void UI::start()
 		applyFonts(spec);
 	}
 
-	float hue{};
-	float sat{};
-	float val{};
+	const ThemeValues theme{ m_preview_theme.value_or(currentTheme()) };
 
-	utils::rgbToHSV(m_preview_color.value_or(cfg::ui_color_base), hue, sat, val);
+	m_preview_theme.reset();
 
-	m_preview_color.reset();
-
-	setColors(hue, sat, val);
+	setColors(theme);
 
 	ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = std::clamp(cfg::ui_bg_opacity, 0.2f, 1.0f);
 

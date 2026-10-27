@@ -15,7 +15,7 @@ static ImVec4 toVec4(const Color clr)
 //hovering a theme previews it on the whole menu, right click deletes saved ones
 static void themeCombo()
 {
-	const std::string current{ ui->themeName(cfg::ui_color_base) };
+	const std::string current{ ui->themeName(ui->currentTheme()) };
 
 	if (ImGui::BeginCombo("theme", current.c_str(), ImGuiComboFlags_HeightLarge))
 	{
@@ -27,15 +27,22 @@ static void themeCombo()
 		{
 			ImGui::PushID(theme.name.c_str());
 
-			ImGui::ColorButton("##swatch", toVec4(theme.color), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { swatch, swatch });
-			ImGui::SameLine();
+			ImGui::ColorButton("##swatch", toVec4(theme.values.base), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { swatch, swatch });
+
+			//themes with their own accent show it next to the base color
+			if (theme.values.accent_custom) {
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::ColorButton("##accent", toVec4(theme.values.accent), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { swatch * 0.5f, swatch });
+			}
+
+			ImGui::SameLine(swatch * 2.0f + ImGui::GetStyle().ItemSpacing.x);
 
 			if (ImGui::Selectable(theme.name.c_str(), theme.name == current)) {
-				cfg::ui_color_base = theme.color;
+				ui->applyTheme(theme.values);
 			}
 
 			if (ImGui::IsItemHovered()) {
-				ui->previewColor(theme.color);
+				ui->previewTheme(theme.values);
 			}
 
 			if (!theme.preset && ImGui::BeginPopupContextItem("theme_popup_context"))
@@ -299,11 +306,11 @@ static void themeSaveInput()
 	}
 
 	const std::string theme_name{ name };
-	const Color clr{ cfg::ui_color_base };
+	const ThemeValues values{ ui->currentTheme() };
 
-	auto save = [theme_name, clr]()
+	auto save = [theme_name, values]()
 	{
-		ui->saveTheme(theme_name, clr);
+		ui->saveTheme(theme_name, values);
 		notifs->message(std::format("saved theme '{}'", theme_name));
 	};
 
@@ -1334,9 +1341,13 @@ void Menu::pageVisualsColors()
 				colorPicker("bad", &cfg::color_indicators_bad);
 			});
 
-			section("colors_ui", "ui", 120.0f, []
+			section("colors_ui", "theme", 120.0f, []
 			{
 				colorPicker("base", &cfg::ui_color_base);
+				toggle("custom accent", &cfg::ui_accent_custom);
+				colorPicker("accent", &cfg::ui_color_accent);
+
+				sep();
 
 				if (customWidget("theme")) {
 					themeCombo();

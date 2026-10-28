@@ -23,6 +23,10 @@ void Menu::navigate(const MenuTab tab, const int sub_tab)
 		m_visuals_tab = static_cast<VisualsTab>(sub_tab);
 	}
 
+	else if (tab == MenuTab::SKINS) {
+		m_skins_tab = static_cast<SkinsTab>(sub_tab);
+	}
+
 	m_navigate_frames = 2;
 }
 
@@ -180,7 +184,7 @@ void Menu::run()
 			}
 
 			//a sub tab change only animates the page under its bar, the main tab animation already covers a main tab change
-			const int sub_tab_key{ static_cast<int>(m_stats_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) };
+			const int sub_tab_key{ static_cast<int>(m_skins_tab) * 1000 + static_cast<int>(m_stats_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) };
 
 			if (sub_tab_key != m_sub_tab_key) {
 				m_sub_tab_anim = tab_changed || m_sub_tab_key == -1 ? 1.0f : 0.0f;

@@ -1,7 +1,9 @@
 #include "skin_catalog.hpp"
+#include "equip_regions.hpp"
 
 #include "../statistics/statistics.hpp"
 
+#include <optional>
 #include <set>
 
 //the definition keeps its prefab merged keyvalues right after the vtable
@@ -174,6 +176,82 @@ static bool hasAttribute(KeyValues *const kv, const char *const name)
 	return child(child(kv, "attributes"), name) || child(child(kv, "static_attrs"), name);
 }
 
+std::string localize(std::string_view token)
+{
+	//the game's own string table. reading resource/tf_english.txt ourselves found nothing (it's utf-16), which left every
+	//unusual effect nameless and the cosmetic names on their internal fallbacks
+	if (!i::localize || token.empty()) {
+		return "";
+	}
+
+	const wchar_t *const text{ i::localize->Find(std::string{ token }.c_str()) };
+
+	if (!text || !*text) {
+		return "";
+	}
+
+	const int size{ WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr) };
+
+	if (size <= 1) {
+		return "";
+	}
+
+	std::string out(static_cast<size_t>(size - 1), '\0');
+
+	WideCharToMultiByte(CP_UTF8, 0, text, -1, out.data(), size, nullptr, nullptr);
+
+	return out;
+}
+
+//"#Token" to english, or the text itself when it isn't a token
+static std::string localizedOr(const std::string &text, const std::string &fallback)
+{
+	if (!text.starts_with('#')) {
+		return text.empty() ? fallback : text;
+	}
+
+	const std::string out{ localize(text) };
+
+	return out.empty() ? fallback : out;
+}
+
+static std::vector<SkinStyle> readStyles(KeyValues *const visuals, bool *const australium)
+{
+	std::vector<SkinStyle> out{};
+
+	KeyValues *const styles{ child(visuals, "styles") };
+
+	if (!styles) {
+		return out;
+	}
+
+	for (KeyValues *style{ styles->m_pSub }; style; style = style->m_pPeer)
+	{
+		const char *const index{ style->GetName() };
+
+		if (!index || !isdigit(static_cast<unsigned char>(*index))) {
+			continue;
+		}
+
+		SkinStyle entry{ atoi(index), "" };
+
+		entry.name = localizedOr(childValue(style, "name"), std::format("style {}", entry.index));
+
+		//the australium look is a gold skin on the normal model
+		if (const std::string icon{ lower(childValue(style, "image_inventory")) }; australium && icon.ends_with("_gold"))
+		{
+			*australium = true;
+			entry.name = "australium";
+		}
+
+		out.push_back(entry);
+	}
+
+	std::sort(out.begin(), out.end(), [](const SkinStyle &a, const SkinStyle &b) { return a.index < b.index; });
+
+	return out;
+}
+
 static SkinItem readItem(const int def, KeyValues *const kv)
 {
 	SkinItem item{};
@@ -215,35 +293,7 @@ static SkinItem readItem(const int def, KeyValues *const kv)
 
 	item.festivizable = festive_models && childValue(child(kv, "tags"), "can_be_festivized") == "1";
 
-	if (KeyValues *const styles{ child(visuals, "styles") })
-	{
-		for (KeyValues *style{ styles->m_pSub }; style; style = style->m_pPeer)
-		{
-			const char *const index{ style->GetName() };
-
-			if (!index || !isdigit(static_cast<unsigned char>(*index))) {
-				continue;
-			}
-
-			SkinStyle out{ atoi(index), childValue(style, "name") };
-
-			//the australium look is a gold skin on the normal model
-			if (const std::string icon{ lower(childValue(style, "image_inventory")) }; icon.ends_with("_gold"))
-			{
-				item.australium = true;
-				out.name = "australium";
-			}
-
-			//localisation tokens aren't worth showing
-			if (out.name.empty() || out.name.front() == '#') {
-				out.name = std::format("style {}", out.index);
-			}
-
-			item.styles.push_back(out);
-		}
-
-		std::sort(item.styles.begin(), item.styles.end(), [](const SkinStyle &a, const SkinStyle &b) { return a.index < b.index; });
-	}
+	item.styles = readStyles(visuals, &item.australium);
 
 	if (CUtlVector<int> *const kits{ tf_utils::getValidPaintKits(def) })
 	{
@@ -269,11 +319,113 @@ static SkinItem readItem(const int def, KeyValues *const kv)
 	return item;
 }
 
+//"equip_region" "hat", "equip_region" { "hat" "1" }, "equip_regions" { ... }, an item can use both keys
+static void readRegions(KeyValues *const kv, std::vector<std::string> &out)
+{
+	for (const char *const key : { "equip_region", "equip_regions" })
+	{
+		KeyValues *const region{ child(kv, key) };
+
+		if (!region) {
+			continue;
+		}
+
+		if (!region->m_pSub)
+		{
+			if (const std::string name{ lower(kvValue(region)) }; !name.empty()) {
+				out.push_back(name);
+			}
+
+			continue;
+		}
+
+		for (KeyValues *sub{ region->m_pSub }; sub; sub = sub->m_pPeer)
+		{
+			if (const char *const name{ sub->GetName() }) {
+				out.push_back(lower(name));
+			}
+		}
+	}
+
+	std::sort(out.begin(), out.end());
+	out.erase(std::unique(out.begin(), out.end()), out.end());
+}
+
+//nullopt for anything that isn't a cosmetic you could put in a loadout slot
+static std::optional<SkinCosmetic> readCosmetic(const int def, KeyValues *const kv)
+{
+	const std::string slot{ lower(childValue(kv, "item_slot")) };
+
+	if (slot != "head" && slot != "misc") {
+		return std::nullopt;
+	}
+
+	//test items, medals, zombie souls and promo duplicates
+	if (childValue(kv, "hidden") == "1" || childValue(kv, "show_in_armory") == "0") {
+		return std::nullopt;
+	}
+
+	SkinCosmetic out{};
+
+	out.def = def;
+	out.slot = slot;
+
+	if (KeyValues *const used_by{ child(kv, "used_by_classes") })
+	{
+		for (const auto &[name, id] : class_names)
+		{
+			if (child(used_by, name)) {
+				out.classes |= 1u << id;
+			}
+		}
+	}
+
+	if (!out.classes) {
+		return std::nullopt;
+	}
+
+	out.name = localizedOr(childValue(kv, "item_name"), tidyName(childValue(kv, "name")));
+
+	readRegions(kv, out.regions);
+
+	for (const std::string &region : out.regions)
+	{
+		if (const int bit{ equip_regions::bitOf(region) }; bit >= 0) {
+			out.own |= 1u << bit;
+		}
+	}
+
+	out.mask = equip_regions::expand(out.own);
+
+	out.paintable = childValue(child(kv, "capabilities"), "paintable") == "1";
+
+	KeyValues *const visuals{ child(kv, "visuals") };
+
+	out.styles = readStyles(visuals, nullptr);
+
+	//a 1 hides that part of the player model, a 0 only undoes what a prefab hid
+	if (KeyValues *const bodygroups{ child(visuals, "player_bodygroups") })
+	{
+		for (KeyValues *group{ bodygroups->m_pSub }; group; group = group->m_pPeer)
+		{
+			if (kvValue(group) == "1" && group->GetName())
+			{
+				out.hides_bodygroups = true;
+				out.bodygroups.emplace_back(group->GetName());
+			}
+		}
+	}
+
+	return out;
+}
+
 void SkinCatalog::build(void *const schema)
 {
 	m_items.clear();
 	m_families.clear();
 	m_item_index.clear();
+	m_cosmetics.clear();
+	m_cosmetic_index.clear();
 
 	void *const fallback{ s::CEconItemSchema_GetItemDefinition.call<void *>(schema, INVALID_DEF) };
 
@@ -298,6 +450,16 @@ void SkinCatalog::build(void *const schema)
 		}
 
 		const std::string item_class{ childValue(kv, "item_class") };
+
+		//wearables in a weapon slot (shields, boots, razorback) fall out on their item_slot
+		if (item_class.starts_with("tf_wearable"))
+		{
+			if (std::optional<SkinCosmetic> cosmetic{ readCosmetic(def, kv) }) {
+				m_cosmetics.push_back(std::move(*cosmetic));
+			}
+
+			continue;
+		}
 
 		if (!item_class.starts_with("tf_weapon_") && item_class != "saxxy") {
 			continue;
@@ -447,6 +609,122 @@ void SkinCatalog::build(void *const schema)
 			m_items[m_item_index[def]].family = n;
 		}
 	}
+
+	std::sort(m_cosmetics.begin(), m_cosmetics.end(), [](const SkinCosmetic &a, const SkinCosmetic &b) { return a.name < b.name; });
+
+	for (size_t n{}; n < m_cosmetics.size(); n++) {
+		m_cosmetic_index[m_cosmetics[n].def] = n;
+	}
+
+	buildUnusuals();
+}
+
+//items_game "attribute_controlled_attached_particles", red id -> blu id. only the red one has a name
+static const std::pair<int, int> team_unusuals[]
+{
+	{ 59, 55 }, { 139, 140 }, { 145, 146 }, { 175, 176 }, { 183, 184 }, { 193, 194 }, { 207, 208 }, { 216, 217 },
+	{ 221, 222 }, { 224, 225 }, { 226, 227 }, { 239, 240 }, { 245, 246 }, { 261, 262 }, { 267, 268 }, { 274, 275 },
+	{ 279, 280 }, { 281, 282 }, { 295, 296 }, { 297, 298 }, { 301, 302 }, { 309, 310 }, { 312, 313 }, { 315, 316 },
+	{ 318, 319 }, { 322, 323 }, { 327, 328 }, { 331, 332 }, { 337, 338 }, { 342, 343 }, { 346, 347 }, { 360, 361 },
+	{ 362, 363 }, { 365, 366 }, { 374, 375 }, { 377, 378 }, { 382, 383 }, { 385, 386 }, { 387, 388 }, { 390, 391 },
+	{ 397, 398 }, { 399, 400 }, { 410, 411 }, { 413, 414 }, { 416, 417 }, { 421, 422 }
+};
+
+//the cosmetic effects are 6 and up, weapon ones start at 701
+constexpr int COSMETIC_UNUSUAL_FIRST{ 6 };
+constexpr int COSMETIC_UNUSUAL_LAST{ 699 };
+
+void SkinCatalog::buildUnusuals()
+{
+	m_unusuals.clear();
+
+	for (int id{ COSMETIC_UNUSUAL_FIRST }; id <= COSMETIC_UNUSUAL_LAST; id++)
+	{
+		if (std::any_of(std::begin(team_unusuals), std::end(team_unusuals), [&](const auto &pair) { return pair.second == id; })) {
+			continue;
+		}
+
+		std::string name{ localize(std::format("Attrib_Particle{}", id)) };
+
+		if (!name.empty()) {
+			m_unusuals.push_back(SkinUnusual{ id, std::move(name) });
+		}
+	}
+
+	std::sort(m_unusuals.begin(), m_unusuals.end(), [](const SkinUnusual &a, const SkinUnusual &b) { return a.name < b.name; });
+}
+
+int SkinCatalog::unusualForTeam(const int id, const int team)
+{
+	if (team != TF_TEAM_BLU) {
+		return id;
+	}
+
+	for (const auto &[red, blu] : team_unusuals)
+	{
+		if (red == id) {
+			return blu;
+		}
+	}
+
+	return id;
+}
+
+//items_game paint cans, "set item tint RGB" / "set item tint RGB 2"
+const std::vector<SkinPaint> &SkinCatalog::paints()
+{
+	static const std::vector<SkinPaint> list
+	{
+		{ "Indubitably Green", 7511618 }, { "Zepheniah's Greed", 4345659 }, { "Noble Hatter's Violet", 5322826 },
+		{ "Color No. 216-190-216", 14204632 }, { "A Deep Commitment to Purple", 8208497 }, { "Mann Co. Orange", 13595446 },
+		{ "Muskelmannbraun", 10843461 }, { "Peculiarly Drab Tincture", 12955537 }, { "Radigan Conagher Brown", 6901050 },
+		{ "Ye Olde Rustic Colour", 8154199 }, { "Australium Gold", 15185211 }, { "Aged Moustache Grey", 8289918 },
+		{ "An Extraordinary Abundance of Tinge", 15132390 }, { "A Distinctive Lack of Hue", 1315860 }, { "Pink as Hell", 16738740 },
+		{ "A Color Similar to Slate", 3100495 }, { "Drably Olive", 8421376 }, { "The Bitter Taste of Defeat and Lime", 3329330 },
+		{ "The Color of a Gentlemann's Business Pants", 15787660 }, { "Dark Salmon Injustice", 15308410 }, { "A Mann's Mint", 12377523 },
+		{ "After Eight", 2960676 },
+
+		{ "Team Spirit", 12073019, 5801378 }, { "Operator's Overalls", 4732984, 3686984 }, { "Waterlogged Lab Coat", 11049612, 8626083 },
+		{ "Balaclavas Are Forever", 3874595, 1581885 }, { "An Air of Debonair", 6637376, 2636109 }, { "The Value of Teamwork", 8400928, 2452877 },
+		{ "Cream Spirit", 12807213, 12091445 }
+	};
+
+	return list;
+}
+
+const SkinCosmetic *SkinCatalog::cosmetic(const int def) const
+{
+	const auto it{ m_cosmetic_index.find(def) };
+
+	return it == m_cosmetic_index.end() ? nullptr : &m_cosmetics[it->second];
+}
+
+std::string SkinCatalog::conflict(const SkinCosmetic &a, const SkinCosmetic &b) const
+{
+	if (!(a.mask & b.own) && !(b.mask & a.own))
+	{
+		//a region the table doesn't know still clashes with itself
+		for (const std::string &region : a.regions)
+		{
+			if (equip_regions::bitOf(region) < 0 && std::find(b.regions.begin(), b.regions.end(), region) != b.regions.end()) {
+				return region;
+			}
+		}
+
+		return "";
+	}
+
+	//name the region of a that's in the way
+	for (const std::string &region : a.regions)
+	{
+		const int bit{ equip_regions::bitOf(region) };
+
+		if (bit >= 0 && (((1u << bit) & b.mask) || (equip_regions::expand(1u << bit) & b.own))) {
+			return region;
+		}
+	}
+
+	return a.regions.empty() ? "equip region" : a.regions.front();
 }
 
 bool SkinCatalog::ensure()
@@ -519,6 +797,21 @@ std::string SkinCatalog::dump() const
 				it->decorated ? " decorated" : "", it->botkiller ? " botkiller" : "", it->festivizable ? " festivizable" : "",
 				it->australium ? " australium" : "", it->stattrak ? " stattrak" : "", it->styles.size(), it->paintkits.size());
 		}
+	}
+
+	out += std::format("\n{} cosmetics, {} unusual effects\n\n", m_cosmetics.size(), m_unusuals.size());
+
+	for (const SkinCosmetic &cosmetic : m_cosmetics)
+	{
+		std::string regions{};
+
+		for (const std::string &region : cosmetic.regions) {
+			regions += (regions.empty() ? "" : ",") + region;
+		}
+
+		out += std::format("{:>6} {} [{}] classes 0x{:X} regions {} (own 0x{:X} mask 0x{:X}){}{} styles {}\n", cosmetic.def, cosmetic.name, cosmetic.slot,
+			cosmetic.classes, regions.empty() ? "none" : regions, cosmetic.own, cosmetic.mask,
+			cosmetic.paintable ? " paintable" : "", cosmetic.hides_bodygroups ? " bodygroups" : "", cosmetic.styles.size());
 	}
 
 	return out;

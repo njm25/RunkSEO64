@@ -5,6 +5,18 @@
 #include <bit>
 #include <unordered_set>
 
+//kRenderNone, C_BaseEntity::ShouldDraw draws nothing in it
+constexpr unsigned char RENDER_MODE_NONE{ 10 };
+
+static C_BaseEntity *fromHandle(const unsigned long handle);
+static unsigned long handleOf(C_BaseEntity *const ent);
+
+//everything that changes what the weapons and wearables get built with
+static std::string settingsKey()
+{
+	return cfg::skins_active ? cfg::skins_overrides + "|" + cfg::skins_player : "";
+}
+
 //the four effects weapons can have, in the order the menu lists them
 static float unusualEffect(const int option)
 {
@@ -275,6 +287,298 @@ std::vector<int> SkinChanger::equippedFamilies() const
 	return out;
 }
 
+static const std::pair<const char *, int> player_classes[]
+{
+	{ "scout", TF_CLASS_SCOUT }, { "soldier", TF_CLASS_SOLDIER }, { "pyro", TF_CLASS_PYRO },
+	{ "demoman", TF_CLASS_DEMOMAN }, { "heavy", TF_CLASS_HEAVYWEAPONS }, { "engineer", TF_CLASS_ENGINEER },
+	{ "medic", TF_CLASS_MEDIC }, { "sniper", TF_CLASS_SNIPER }, { "spy", TF_CLASS_SPY }
+};
+
+static bool validClass(const int cls)
+{
+	return cls > TF_CLASS_UNDEFINED && cls < TF_CLASS_CIVILIAN;
+}
+
+void SkinChanger::parsePlayer()
+{
+	if (m_player_parsed_from == cfg::skins_player) {
+		return;
+	}
+
+	m_player_parsed_from = cfg::skins_player;
+	m_player = {};
+
+	const nlohmann::json j{ nlohmann::json::parse(cfg::skins_player, nullptr, false) };
+
+	if (!j.is_object()) {
+		return;
+	}
+
+	for (const auto &[name, cls] : player_classes)
+	{
+		const auto it{ j.find(name) };
+
+		if (it == j.end() || !it->is_object()) {
+			continue;
+		}
+
+		ClassOverride &o{ m_player[cls] };
+
+		o.enabled = it->value("enabled", false);
+
+		if (const auto slots{ it->find("slots") }; slots != it->end() && slots->is_array())
+		{
+			for (size_t n{}; n < std::min(slots->size(), o.slots.size()); n++)
+			{
+				const nlohmann::json &slot{ (*slots)[n] };
+
+				if (!slot.is_object()) {
+					continue;
+				}
+
+				o.slots[n].def = slot.value("def", 0);
+				o.slots[n].paint = slot.value("paint", 0);
+				o.slots[n].style = slot.value("style", -1);
+				o.slots[n].unusual = slot.value("unusual", 0);
+			}
+		}
+	}
+}
+
+const ClassOverride &SkinChanger::classOverride(const int cls)
+{
+	parsePlayer();
+
+	static const ClassOverride none{};
+
+	return validClass(cls) ? m_player[cls] : none;
+}
+
+std::string SkinChanger::slotConflict(const int cls, const int slot, const int def)
+{
+	const SkinCosmetic *const item{ skin_catalog->cosmetic(def) };
+
+	if (!item || !validClass(cls)) {
+		return "";
+	}
+
+	const ClassOverride &o{ classOverride(cls) };
+
+	for (int n{}; n < static_cast<int>(o.slots.size()); n++)
+	{
+		const SkinCosmetic *const other{ n != slot ? skin_catalog->cosmetic(o.slots[n].def) : nullptr };
+
+		if (!other) {
+			continue;
+		}
+
+		if (const std::string region{ skin_catalog->conflict(*item, *other) }; !region.empty()) {
+			return std::format("conflicts with {} ({})", other->name, region);
+		}
+	}
+
+	return "";
+}
+
+void SkinChanger::setClassOverride(const int cls, ClassOverride override)
+{
+	if (!validClass(cls)) {
+		return;
+	}
+
+	parsePlayer();
+
+	//the loadout's own rules: only what the class can wear, and nothing that clashes with a slot before it
+	for (size_t n{}; n < override.slots.size(); n++)
+	{
+		CosmeticSlot &slot{ override.slots[n] };
+		const SkinCosmetic *const item{ skin_catalog->cosmetic(slot.def) };
+
+		if (slot.def && (!item || !(item->classes & (1u << cls))))
+		{
+			slot = {};
+			continue;
+		}
+
+		for (size_t prev{}; prev < n && item; prev++)
+		{
+			const SkinCosmetic *const other{ skin_catalog->cosmetic(override.slots[prev].def) };
+
+			if (other && !skin_catalog->conflict(*item, *other).empty()) {
+				slot = {};
+				break;
+			}
+		}
+	}
+
+	m_player[cls] = override;
+
+	nlohmann::ordered_json j = nlohmann::ordered_json::object();
+
+	for (const auto &[name, id] : player_classes)
+	{
+		const ClassOverride &o{ m_player[id] };
+
+		if (o == ClassOverride{}) {
+			continue;
+		}
+
+		nlohmann::ordered_json slots = nlohmann::ordered_json::array();
+
+		for (const CosmeticSlot &slot : o.slots) {
+			slots.push_back({ { "def", slot.def }, { "paint", slot.paint }, { "style", slot.style }, { "unusual", slot.unusual } });
+		}
+
+		j[name] = { { "enabled", o.enabled }, { "slots", slots } };
+	}
+
+	cfg::skins_player = j.empty() ? "" : j.dump();
+	m_player_parsed_from = cfg::skins_player;
+}
+
+//wearables are econ entities like weapons, the item netvars sit at the same offsets
+static C_TFWeaponBase *econ(C_BaseEntity *const ent)
+{
+	return static_cast<C_TFWeaponBase *>(ent);
+}
+
+//C_BasePlayer::m_hMyWearables, a CUtlVector of handles
+struct HandleVector final
+{
+	unsigned long *memory{};
+	int allocated{};
+	int grow_size{};
+	int size{};
+	unsigned long *elements{};
+};
+
+//your cosmetic wearables (not shields, boots and other weapon slot ones), by entity index so the order holds across updates
+static std::vector<C_BaseEntity *> realCosmetics(C_TFPlayer *const local)
+{
+	std::vector<C_BaseEntity *> out{};
+
+	if (!local) {
+		return out;
+	}
+
+	const HandleVector *const wearables{ reinterpret_cast<const HandleVector *>(&local->m_hMyWearables()) };
+
+	for (int n{}; n < wearables->size && wearables->memory; n++)
+	{
+		IClientEntity *const client_ent{ i::ent_list->GetClientEntityFromHandle(CBaseHandle{ wearables->memory[n] }) };
+
+		if (!client_ent) {
+			continue;
+		}
+
+		C_BaseEntity *const ent{ client_ent->cast<C_BaseEntity>() };
+
+		if (ent->m_hOwnerEntity().Get() == local && skin_catalog->cosmetic(econ(ent)->m_iItemDefinitionIndex())) {
+			out.push_back(ent);
+		}
+	}
+
+	std::sort(out.begin(), out.end(), [](C_BaseEntity *const a, C_BaseEntity *const b) { return a->entindex() < b->entindex(); });
+
+	return out;
+}
+
+//paint, style and effect of one slot, on a real cosmetic or one we spawned
+static void setSlotAttributes(CAttributeList *const list, const CosmeticSlot &slot, const int team)
+{
+	const std::vector<SkinPaint> &paints{ SkinCatalog::paints() };
+
+	if (slot.paint > 0 && slot.paint <= static_cast<int>(paints.size()))
+	{
+		const SkinPaint &paint{ paints[slot.paint - 1] };
+
+		setAttribute(list, attributes::set_item_tint_rgb, static_cast<float>(paint.red));
+		setAttribute(list, attributes::set_item_tint_rgb_2, static_cast<float>(paint.blu ? paint.blu : paint.red));
+	}
+
+	//the real item's style index means nothing on another item
+	setAttribute(list, attributes::item_style_override, static_cast<float>(std::max(slot.style, 0)));
+
+	//0 also clears the real item's effect
+	setAttribute(list, attributes::set_attached_particle, static_cast<float>(slot.unusual ? SkinCatalog::unusualForTeam(slot.unusual, team) : 0));
+}
+
+//a cosmetic the class can wear that hides nothing and takes no region, for real wearables the override has no slot for
+static int blankCosmetic(const int cls)
+{
+	for (const SkinCosmetic &cosmetic : skin_catalog->cosmetics())
+	{
+		if ((cosmetic.classes & (1u << cls)) && !cosmetic.hides_bodygroups && !cosmetic.own && cosmetic.regions.empty()) {
+			return cosmetic.def;
+		}
+	}
+
+	return 0;
+}
+
+void SkinChanger::applyPlayer(C_TFPlayer *const local)
+{
+	m_hidden_wearables.clear();
+	m_extra_slots.clear();
+
+	parsePlayer();
+
+	const int cls{ local->m_iClass() };
+
+	if (!validClass(cls) || !m_player[cls].enabled) {
+		return;
+	}
+
+	const ClassOverride &o{ m_player[cls] };
+	const int team{ local->m_iTeamNum() };
+
+	std::vector<const CosmeticSlot *> active{};
+
+	for (const CosmeticSlot &slot : o.slots)
+	{
+		if (slot.def && skin_catalog->cosmetic(slot.def)) {
+			active.push_back(&slot);
+		}
+	}
+
+	const std::vector<C_BaseEntity *> wearables{ realCosmetics(local) };
+
+	for (size_t n{}; n < wearables.size(); n++)
+	{
+		C_TFWeaponBase *const wearable{ econ(wearables[n]) };
+		CAttributeList *const list{ wearable->m_AttributeList() };
+
+		//nothing left to show on this one, it gets a harmless def (so its bodygroups and regions go) and stays out of sight
+		if (n >= active.size())
+		{
+			if (const int blank{ active.empty() ? blankCosmetic(cls) : active.front()->def }) {
+				wearable->m_iItemDefinitionIndex() = blank;
+			}
+
+			if (list) {
+				setAttribute(list, attributes::set_attached_particle, 0.0f);
+			}
+
+			m_hidden_wearables.push_back(handleOf(wearables[n]));
+			continue;
+		}
+
+		const CosmeticSlot &slot{ *active[n] };
+
+		//the game picks the model, skin, style, bodygroups and particles from the def when the wearable is created
+		wearable->m_iItemDefinitionIndex() = slot.def;
+
+		if (list) {
+			setSlotAttributes(list, slot, team);
+		}
+	}
+
+	//more slots than real cosmetics, run() spawns the rest
+	for (size_t n{ wearables.size() }; n < active.size(); n++) {
+		m_extra_slots.push_back(*active[n]);
+	}
+}
+
 bool SkinChanger::onLevelInit()
 {
 	m_full_update_time = 0.0f;
@@ -284,7 +588,10 @@ bool SkinChanger::onLevelInit()
 
 void SkinChanger::apply()
 {
-	if (!cfg::skins_active) {
+	if (!cfg::skins_active)
+	{
+		m_hidden_wearables.clear();
+		m_extra_slots.clear();
 		return;
 	}
 
@@ -295,12 +602,9 @@ void SkinChanger::apply()
 	}
 
 	parse();
+	applyPlayer(local);
 
-	if (m_overrides.empty()) {
-		return;
-	}
-
-	for (int n{}; n < MAX_WEAPONS; n++)
+	for (int n{}; n < MAX_WEAPONS && !m_overrides.empty(); n++)
 	{
 		C_TFWeaponBase *const weapon{ local->GetWeapon(n) };
 
@@ -422,14 +726,25 @@ bool canGreenFlames(const SkinItem &item)
 	return item.item_class.find("flamethrower") != std::string::npos;
 }
 
-//botkiller heads: the game's own bone merged attachment model (what carries the stattrak module), spawned client side.
-//the head's skeleton is the player's hand and weapon bones, so it's bone merged onto the player (and the viewmodel arms in first person) like the real wearable
+//botkiller heads: what the server makes for a real botkiller, spawned client side. a tf_wearable bone merged onto the player and a
+//tf_wearable_vm on the viewmodel arms (the head's skeleton is the hand and weapon bones), both tied to their weapon.
+//the wearables' own ShouldDraw then shows them only while that weapon is out, the world one in third person and the vm one in first
 
-constexpr size_t ATTACHMENT_MODEL_SIZE{ 0xC28 }; //what the game allocates for one
 constexpr int RENDER_GROUP_OPAQUE_ENTITY{ 7 };
 constexpr int RENDER_GROUP_VIEW_MODEL_OPAQUE{ 10 };
 constexpr int EFFECT_NODRAW{ 0x20 };
+constexpr int EFFECT_BONEMERGE_FASTCULL{ 0x80 };
 constexpr unsigned long INVALID_HANDLE{ 0xFFFFFFFF };
+
+//C_BaseEntity::m_bReadyToDraw, C_BaseAnimating::DrawModel draws nothing without it.
+//the interpolation pass sets it for networked entities, a client made one never goes through that
+constexpr uintptr_t READY_TO_DRAW_OFFSET{ 0xC0 };
+constexpr uintptr_t STUDIO_HDR_OFFSET{ 0xBF0 }; //C_BaseAnimating::m_pStudioHdr, null until the model has loaded
+
+static bool &readyToDraw(C_BaseEntity *const ent)
+{
+	return *reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(ent) + READY_TO_DRAW_OFFSET);
+}
 
 static C_BaseEntity *fromHandle(const unsigned long handle)
 {
@@ -473,7 +788,7 @@ static void setDrawn(C_BaseEntity *const ent, const bool drawn)
 }
 
 //once per message, the spawn gets retried every frame
-static void headLog(const std::string &msg)
+static void logOnce(const std::string &msg)
 {
 	static std::unordered_set<std::string> logged{};
 
@@ -482,46 +797,69 @@ static void headLog(const std::string &msg)
 	}
 }
 
-static unsigned long spawnHead(const std::string &path, C_BaseEntity *const parent, C_TFWeaponBase *const weapon, const bool view, const int skin)
+static unsigned long spawnHead(const std::string &path, C_TFPlayer *const local, C_BaseEntity *const parent, C_TFWeaponBase *const weapon, const bool view,
+	const int def, const int skin)
 {
+	static const uintptr_t associated{ netvars->getOffset(HASH_CT("DT_TFWearable"), HASH_CT("m_hWeaponAssociatedWith"), "DT_TFWearable", "m_hWeaponAssociatedWith") };
+	static const uintptr_t initialized{ netvars->getOffset(HASH_CT("DT_ScriptCreatedItem"), HASH_CT("m_bInitialized"), "DT_ScriptCreatedItem", "m_bInitialized") };
+
 	const char *const which{ view ? "viewmodel" : "world" };
 
 	if (!parent || path.empty()) {
 		return INVALID_HANDLE;
 	}
 
+	void *const class_map{ s::GetClassMap.call<void *>() };
+
+	if (!class_map || !associated || !initialized || !s::C_BaseEntity_FollowEntity.get())
+	{
+		logOnce(std::format("botkiller head: missing class map {} / m_hWeaponAssociatedWith {:#x} / m_bInitialized {:#x} / FollowEntity {}",
+			class_map, associated, initialized, reinterpret_cast<void *>(s::C_BaseEntity_FollowEntity.get())));
+		return INVALID_HANDLE;
+	}
+
 	if (!ensureModel(path))
 	{
-		headLog(std::format("botkiller head {}: couldn't load {}", which, path));
+		logOnce(std::format("botkiller head {}: couldn't load {}", which, path));
 		return INVALID_HANDLE;
 	}
 
-	void *const memory{ i::mem_alloc->Alloc(ATTACHMENT_MODEL_SIZE) };
+	//IClassMap::CreateEntity
+	C_BaseEntity *const ent{ mem::callVirtual<3, C_BaseEntity *, const char *>(class_map, view ? "tf_wearable_vm" : "tf_wearable") };
 
-	if (!memory) {
-		return INVALID_HANDLE;
-	}
-
-	memset(memory, 0, ATTACHMENT_MODEL_SIZE);
-
-	C_BaseEntity *const ent{ s::C_TFWeaponAttachmentModel_Ctor.call<C_BaseEntity *>(memory) };
-
-	//InitializeAsClientEntity, only fails before the entity list knows about it
-	if (!ent || !mem::callVirtual<82, bool, const char *, int>(ent, path.c_str(), view ? RENDER_GROUP_VIEW_MODEL_OPAQUE : RENDER_GROUP_OPAQUE_ENTITY))
+	if (!ent)
 	{
-		headLog(std::format("botkiller head {}: the game wouldn't create it for {}", which, path));
-		i::mem_alloc->Free(memory);
+		logOnce(std::format("botkiller head {}: the game wouldn't create the wearable", which));
 		return INVALID_HANDLE;
 	}
 
-	s::C_TFWeaponAttachmentModel_Init.call<void>(ent, parent, weapon, view);
+	//InitializeAsClientEntity with the head's model. the item set below would pick the botkiller weapon's model instead,
+	//but that only happens in ValidateModelIndex, which nothing calls on a client made entity
+	if (!mem::callVirtual<82, bool, const char *, int>(ent, path.c_str(), view ? RENDER_GROUP_VIEW_MODEL_OPAQUE : RENDER_GROUP_OPAQUE_ENTITY))
+	{
+		logOnce(std::format("botkiller head {}: the game wouldn't take {}", which, path));
+
+		//what the game does when this fails, it isn't in the entity list yet
+		static_cast<IClientNetworkable *>(ent)->Release();
+		return INVALID_HANDLE;
+	}
+
+	*reinterpret_cast<unsigned long *>(&ent->m_hOwnerEntity()) = handleOf(local);
+	*reinterpret_cast<unsigned long *>(reinterpret_cast<uintptr_t>(ent) + associated) = handleOf(weapon);
+	ent->m_iTeamNum() = local->m_iTeamNum();
+
+	//the botkiller's own item, like the server's head carries. the wearable takes its skin (the tier colour) from the item's
+	//visuals_red/blu, without one it's the plain team skin, silver
+	econ(ent)->m_iItemDefinitionIndex() = def;
+	*reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(ent) + initialized) = true;
+
+	s::C_BaseEntity_FollowEntity.call<void>(ent, parent, true);
+	ent->m_fEffects() |= EFFECT_BONEMERGE_FASTCULL;
 
 	ent->cast<C_BaseAnimating>()->m_nSkin() = skin;
+	readyToDraw(ent) = true;
 
-	//Init leaves it EF_NODRAW for its weapon to draw, ours stay in the renderable lists and the ShouldDraw hook decides
-	setDrawn(ent, true);
-
-	headLog(std::format("botkiller head {}: spawned {}", which, path));
+	logOnce(std::format("botkiller head {}: spawned {}", which, path));
 
 	return handleOf(ent);
 }
@@ -544,8 +882,294 @@ void SkinChanger::removeHeads()
 	m_heads.clear();
 }
 
-//off until the heads render right, a saved head in a config would otherwise still hide a real botkiller's head
-constexpr bool BOTKILLER_HEADS{ false };
+//cosmetics past your real ones: the game's own tf_wearable, made client side, so its econ code does the model, skin, style, paint and effect
+constexpr int LIFE_STATE_ALIVE{ 0 };
+
+static unsigned long spawnCosmetic(C_TFPlayer *const local, const CosmeticSlot &slot, const int team)
+{
+	static const uintptr_t initialized{ netvars->getOffset(HASH_CT("DT_ScriptCreatedItem"), HASH_CT("m_bInitialized"), "DT_ScriptCreatedItem", "m_bInitialized") };
+
+	void *const class_map{ s::GetClassMap.call<void *>() };
+
+	if (!class_map || !initialized || !s::C_BaseEntity_FollowEntity.get())
+	{
+		logOnce(std::format("cosmetic: missing class map {} / m_bInitialized {:#x} / FollowEntity {}", class_map, initialized, reinterpret_cast<void *>(s::C_BaseEntity_FollowEntity.get())));
+		return INVALID_HANDLE;
+	}
+
+	//IClassMap::CreateEntity, the same factory the game uses for the map name
+	C_BaseEntity *const ent{ mem::callVirtual<3, C_BaseEntity *, const char *>(class_map, "tf_wearable") };
+
+	if (!ent)
+	{
+		logOnce("cosmetic: the game wouldn't create a tf_wearable");
+		return INVALID_HANDLE;
+	}
+
+	//InitializeAsClientEntity, no model yet (that can't fail), the item picks one below
+	mem::callVirtual<82, bool, const char *, int>(ent, nullptr, RENDER_GROUP_OPAQUE_ENTITY);
+
+	//the model lookup wants the owner's class and team
+	*reinterpret_cast<unsigned long *>(&ent->m_hOwnerEntity()) = handleOf(local);
+	ent->m_iTeamNum() = team;
+
+	C_TFWeaponBase *const item{ econ(ent) };
+
+	item->m_iItemDefinitionIndex() = slot.def;
+	*reinterpret_cast<bool *>(reinterpret_cast<uintptr_t>(ent) + initialized) = true;
+
+	if (CAttributeList *const list{ item->m_AttributeList() }) {
+		setSlotAttributes(list, slot, team);
+	}
+
+	//bone merged onto the player like a real wearable
+	s::C_BaseEntity_FollowEntity.call<void>(ent, local, true);
+	ent->m_fEffects() |= EFFECT_BONEMERGE_FASTCULL;
+
+	//C_EconEntity::ValidateModelIndex, registers the item's (dynamic) model and sets it, OnNewModel waits for it to load
+	mem::callVirtual<236, void>(ent);
+
+	//what a server made wearable gets on creation: attributes, unusual particles, the owner's bodygroups refreshed
+	static_cast<IClientNetworkable *>(ent)->OnDataChanged(DATA_UPDATE_CREATED);
+
+	readyToDraw(ent) = true;
+
+	//TEMP spawned cosmetic debugging
+	i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins] cosmetic def %d spawned: %p handle 0x%lX model %p index %d effects 0x%X\n",
+		slot.def, ent, handleOf(ent), ent->GetModel(), ent->m_nModelIndex(), ent->m_fEffects());
+
+	return handleOf(ent);
+}
+
+//mstudiobodyparts_t
+struct StudioBodyPart final
+{
+	int name_index{};
+	int num_models{};
+	int base{};
+	int model_index{};
+};
+
+//::SetBodygroup by name, on a body value instead of an entity
+static void setBodygroup(const studiohdr_t *const hdr, int &body, const std::string &name, const int value)
+{
+	for (int n{}; n < hdr->numbodyparts; n++)
+	{
+		const StudioBodyPart *const part{ reinterpret_cast<const StudioBodyPart *>(reinterpret_cast<uintptr_t>(hdr) + hdr->bodypartindex) + n };
+		const char *const part_name{ reinterpret_cast<const char *>(part) + part->name_index };
+
+		if (_stricmp(part_name, name.c_str())) {
+			continue;
+		}
+
+		if (value < 0 || value >= part->num_models || part->base <= 0) {
+			return;
+		}
+
+		const int current{ (body / part->base) % part->num_models };
+
+		body += (value - current) * part->base;
+		return;
+	}
+}
+
+//the player hides a real wearable's bodygroups itself (helmets under hats, hat hair, headphones) but only walks m_hMyWearables,
+//so the spawned ones' go on top of whatever the game last set. reapplied every frame, the game resets m_nBody whenever it redoes its own
+void SkinChanger::updateBodygroups(C_TFPlayer *const local)
+{
+	int &body{ local->m_nBody() };
+
+	//a new player object (full update, new map), what we wrote was for the old one
+	if (m_body_player != reinterpret_cast<uintptr_t>(local))
+	{
+		m_body_player = reinterpret_cast<uintptr_t>(local);
+		m_body_written = -1;
+	}
+
+	//anything else than our own value is the game's
+	if (body != m_body_written) {
+		m_body_base = body;
+	}
+
+	std::vector<std::string> groups{};
+
+	for (const SpawnedCosmetic &spawned : m_spawned)
+	{
+		if (const SkinCosmetic *const cosmetic{ skin_catalog->cosmetic(spawned.slot.def) }) {
+			groups.insert(groups.end(), cosmetic->bodygroups.begin(), cosmetic->bodygroups.end());
+		}
+	}
+
+	const model_t *const model{ local->GetModel() };
+	const studiohdr_t *const hdr{ model ? i::model_info->GetStudioModel(model) : nullptr };
+
+	if (groups.empty() || !hdr)
+	{
+		//put the game's back
+		if (m_body_written != -1 && body == m_body_written) {
+			body = m_body_base;
+		}
+
+		m_body_written = -1;
+		return;
+	}
+
+	int next{ m_body_base };
+
+	for (const std::string &group : groups) {
+		setBodygroup(hdr, next, group, 1);
+	}
+
+	body = next;
+	m_body_written = next;
+}
+
+void SkinChanger::removeSpawned()
+{
+	for (const SpawnedCosmetic &spawned : m_spawned) {
+		removeEntity(spawned.handle);
+	}
+
+	m_spawned.clear();
+
+	//the bodygroups only they hid come back
+	C_TFPlayer *const local{ i::engine->IsInGame() ? ec->getLocal() : nullptr };
+
+	if (local && m_body_player == reinterpret_cast<uintptr_t>(local) && m_body_written != -1 && local->m_nBody() == m_body_written) {
+		local->m_nBody() = m_body_base;
+	}
+
+	m_body_written = -1;
+}
+
+void SkinChanger::updateSpawned()
+{
+	C_TFPlayer *const local{ cfg::skins_active && i::engine->IsInGame() ? ec->getLocal() : nullptr };
+
+	if (!local || !skin_catalog->ensure())
+	{
+		removeSpawned();
+		return;
+	}
+
+	const int team{ local->m_iTeamNum() };
+
+	//nothing to wear while dead, they come back on respawn
+	const size_t wanted{ local->m_lifeState() == LIFE_STATE_ALIVE ? m_extra_slots.size() : 0 };
+
+	//slot by slot, everything from the first one that changed gets respawned.
+	//a full update recreates the player under the same handle, so the parent is checked by pointer
+	size_t keep{};
+
+	while (keep < m_spawned.size() && keep < wanted)
+	{
+		const SpawnedCosmetic &spawned{ m_spawned[keep] };
+		C_BaseEntity *const ent{ fromHandle(spawned.handle) };
+
+		if (!ent || ent->GetMoveParent().Get() != local || spawned.team != team || !(spawned.slot == m_extra_slots[keep])) {
+			break;
+		}
+
+		keep++;
+	}
+
+	for (size_t n{ keep }; n < m_spawned.size(); n++) {
+		removeEntity(m_spawned[n].handle);
+	}
+
+	m_spawned.resize(keep);
+
+	for (size_t n{ keep }; n < wanted; n++)
+	{
+		const unsigned long handle{ spawnCosmetic(local, m_extra_slots[n], team) };
+
+		//tried again next frame
+		if (handle == INVALID_HANDLE) {
+			break;
+		}
+
+		m_spawned.push_back({ handle, m_extra_slots[n], team });
+	}
+
+	updateBodygroups(local);
+
+	//TEMP debugging: whether anything cleared it since last frame
+	static bool was_cleared{};
+
+	//kept set every frame in case anything clears it
+	for (const SpawnedCosmetic &spawned : m_spawned)
+	{
+		if (C_BaseEntity *const ent{ fromHandle(spawned.handle) })
+		{
+			was_cleared |= !readyToDraw(ent);
+			readyToDraw(ent) = true;
+
+			//UpdateVisibility: in or out of the render lists by ShouldDraw. the game only calls it on changes it knows about
+			//(network updates, model loads, the player's third person switch walking m_hMyWearables), none reach ours
+			mem::callVirtual<91, void>(ent);
+		}
+	}
+
+	//TEMP spawned cosmetic debugging, every 3 seconds while the override wants any
+	static float next_dump{};
+
+	if (!m_extra_slots.empty() && i::global_vars->realtime >= next_dump)
+	{
+		next_dump = i::global_vars->realtime + 3.0f;
+
+		i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins] cosmetics: %d real, %d extra slots, %d spawned, alive %d, first person %d, ready flag got cleared %d\n",
+			static_cast<int>(realCosmetics(local).size()), static_cast<int>(m_extra_slots.size()), static_cast<int>(m_spawned.size()), local->m_lifeState() == LIFE_STATE_ALIVE,
+			local->InFirstPersonView(), was_cleared);
+
+		was_cleared = false;
+
+		//TEMP: why a real cosmetic isn't counted, everything in m_hMyWearables
+		const HandleVector *const wearables{ reinterpret_cast<const HandleVector *>(&local->m_hMyWearables()) };
+
+		i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]   m_hMyWearables: size %d memory %p, body %d (game's %d)\n",
+			wearables->size, wearables->memory, local->m_nBody(), m_body_base);
+
+		for (int n{}; n < wearables->size && wearables->memory && n < 16; n++)
+		{
+			C_BaseEntity *const ent{ fromHandle(wearables->memory[n]) };
+
+			if (!ent)
+			{
+				i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]     wearable 0x%lX: not here\n", wearables->memory[n]);
+				continue;
+			}
+
+			const int def{ econ(ent)->m_iItemDefinitionIndex() };
+
+			i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]     wearable 0x%lX: class %d def %d owner ok %d in catalog %d dormant %d\n",
+				wearables->memory[n], static_cast<int>(ent->GetClassId()), def, ent->m_hOwnerEntity().Get() == local, skin_catalog->cosmetic(def) != nullptr, ent->IsDormant());
+		}
+
+		for (const SpawnedCosmetic &spawned : m_spawned)
+		{
+			C_BaseEntity *const ent{ fromHandle(spawned.handle) };
+
+			if (!ent)
+			{
+				i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]   def %d: gone\n", spawned.slot.def);
+				continue;
+			}
+
+			const short index{ static_cast<short>(ent->m_nModelIndex()) };
+			const Vector origin{ ent->GetAbsOrigin() };
+			const Vector player{ local->GetAbsOrigin() };
+
+			i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 },
+				"[skins]   def %d: %p model %p index %d loading %d studio %p effects 0x%X render mode %d parent ok %d should draw %d skin %d at %.0f %.0f %.0f (you %.0f %.0f %.0f)\n",
+				spawned.slot.def, ent, ent->GetModel(), index, index < -1 && i::model_info->IsDynamicModelLoading(index),
+				*reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(ent) + STUDIO_HDR_OFFSET), ent->m_fEffects(), ent->m_nRenderMode(),
+				ent->GetMoveParent().Get() == local, ent->ShouldDraw(), ent->cast<C_BaseAnimating>()->m_nSkin(),
+				origin.x, origin.y, origin.z, player.x, player.y, player.z);
+		}
+	}
+}
+
+constexpr bool BOTKILLER_HEADS{ true };
 
 //the botkiller head a weapon should carry right now, nullptr for none
 static const SkinItem *wantedHead(C_TFWeaponBase *const weapon, const std::unordered_map<int, WeaponOverride> &overrides)
@@ -617,28 +1241,6 @@ static C_BaseEntity *localViewModel(C_TFPlayer *const local)
 	return nullptr;
 }
 
-//TEMP botkiller debugging: how often our heads got asked to draw since the last state dump
-static int world_asks{};
-static int view_asks{};
-
-std::optional<bool> SkinChanger::headShouldDraw(const uintptr_t ent) const
-{
-	for (const BotkillerHead &head : m_heads)
-	{
-		if (head.world_ent && ent == head.world_ent) {
-			world_asks++;
-			return head.world_drawn;
-		}
-
-		if (head.view_ent && ent == head.view_ent) {
-			view_asks++;
-			return head.view_drawn;
-		}
-	}
-
-	return std::nullopt;
-}
-
 void SkinChanger::updateHeads()
 {
 	C_TFPlayer *const local{ cfg::skins_active && i::engine->IsInGame() ? ec->getLocal() : nullptr };
@@ -707,40 +1309,49 @@ void SkinChanger::updateHeads()
 			head.team = team;
 			head.world = INVALID_HANDLE;
 			head.view = INVALID_HANDLE;
-			head.view_parent = INVALID_HANDLE;
 
 			m_heads.push_back(head);
 			it = m_heads.end() - 1;
 		}
 
+		//a full update recreates the player, viewmodel and weapons under the same handles, which leaves our heads parentless where they were.
+		//so the parent is checked by pointer, and a head on the wrong one is respawned
+		C_BaseEntity *const view_parent{ localViewModel(local) };
+		C_BaseEntity *const world{ fromHandle(it->world) };
+		C_BaseEntity *const view{ fromHandle(it->view) };
+
 		//the real head is a wearable on the player, merged onto the player's hand and weapon bones, ours follows the same skeleton.
-		//a model still loading fails the spawn, it gets another go next frame
-		if (!fromHandle(it->world)) {
-			it->world = spawnHead(item->extra_wearable, local, weapon, false, skin);
+		//a failed spawn gets another go next frame
+		if (!world || world->GetMoveParent().Get() != local || it->weapon_ent != reinterpret_cast<uintptr_t>(weapon))
+		{
+			removeEntity(it->world);
+			it->world = spawnHead(item->extra_wearable, local, local, weapon, false, item->def, skin);
 		}
 
-		//first person it's the viewmodel arms, like the real head's viewmodel wearable
-		const unsigned long view_parent{ handleOf(localViewModel(local)) };
-
-		if (view_parent != it->view_parent || !fromHandle(it->view))
+		//first person it's on the viewmodel arms, like the real head's viewmodel wearable
+		if (!view || !view_parent || view->GetMoveParent().Get() != view_parent || it->weapon_ent != reinterpret_cast<uintptr_t>(weapon))
 		{
 			removeEntity(it->view);
 
 			const std::string &vm_path{ item->extra_wearable_vm.empty() ? item->extra_wearable : item->extra_wearable_vm };
 
-			it->view_parent = view_parent;
-			it->view = spawnHead(vm_path, fromHandle(view_parent), weapon, true, skin);
+			it->view = spawnHead(vm_path, local, view_parent, weapon, true, item->def, skin);
 		}
+
+		it->weapon_ent = reinterpret_cast<uintptr_t>(weapon);
 
 		hideServerHead(weapon);
 
-		//only on the weapon that's out, and only in the view that's showing it
-		const bool out{ weapon == active };
-
-		it->world_ent = reinterpret_cast<uintptr_t>(fromHandle(it->world));
-		it->view_ent = reinterpret_cast<uintptr_t>(fromHandle(it->view));
-		it->world_drawn = out && !first_person;
-		it->view_drawn = out && first_person;
+		//same as the spawned cosmetics: DrawModel skips it without the flag, and nothing else puts it in the render lists
+		//when its ShouldDraw answer changes (weapon switch, first/third person)
+		for (const unsigned long handle : { it->world, it->view })
+		{
+			if (C_BaseEntity *const ent{ fromHandle(handle) })
+			{
+				readyToDraw(ent) = true;
+				mem::callVirtual<91, void>(ent);
+			}
+		}
 	}
 
 	//TEMP botkiller debugging, every 3 seconds while there's a head
@@ -752,23 +1363,32 @@ void SkinChanger::updateHeads()
 
 		for (const BotkillerHead &head : m_heads)
 		{
-			C_BaseEntity *const world{ fromHandle(head.world) };
-			C_BaseEntity *const view{ fromHandle(head.view) };
+			for (const unsigned long handle : { head.world, head.view })
+			{
+				C_BaseEntity *const ent{ fromHandle(handle) };
 
-			i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 },
-				"[skins] head def %d: world %p (effects 0x%X, drawn %d, asked %d) view %p (effects 0x%X, drawn %d, asked %d) view parent %p first person %d\n",
-				head.def, world, world ? world->m_fEffects() : 0, head.world_drawn, world_asks,
-				view, view ? view->m_fEffects() : 0, head.view_drawn, view_asks, fromHandle(head.view_parent), first_person);
+				if (!ent)
+				{
+					i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins] head def %d %s: none\n", head.def, handle == head.world ? "world" : "view");
+					continue;
+				}
+
+				const Vector origin{ ent->GetAbsOrigin() };
+
+				i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 },
+					"[skins] head def %d %s: %p model %p studio %p effects 0x%X parent %p should draw %d at %.0f %.0f %.0f, first person %d, weapon out %d\n",
+					head.def, handle == head.world ? "world" : "view", ent, ent->GetModel(), *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(ent) + STUDIO_HDR_OFFSET),
+					ent->m_fEffects(), ent->GetMoveParent().Get(), ent->ShouldDraw(), origin.x, origin.y, origin.z, first_person,
+					head.weapon_ent == reinterpret_cast<uintptr_t>(active));
+			}
 		}
-
-		world_asks = 0;
-		view_asks = 0;
 	}
 }
 
 bool SkinChanger::onLevelShutdown()
 {
 	removeHeads();
+	removeSpawned();
 
 	return true;
 }
@@ -776,6 +1396,7 @@ bool SkinChanger::onLevelShutdown()
 bool SkinChanger::onUnload()
 {
 	removeHeads();
+	removeSpawned();
 
 	return true;
 }
@@ -787,19 +1408,31 @@ void SkinChanger::applyNow()
 	}
 
 	m_full_update_time = 0.0f;
-	m_applied = cfg::skins_active ? cfg::skins_overrides : "off";
+	m_applied = settingsKey();
 }
 
 void SkinChanger::run()
 {
 	updateHeads();
+	updateSpawned();
 
 	if (!i::engine->IsInGame()) {
 		return;
 	}
 
-	//"off" and the empty overrides string mean the same: nothing to show
-	std::string key{ cfg::skins_active ? cfg::skins_overrides : "" };
+	if (!cfg::skins_active) {
+		m_hidden_wearables.clear();
+	}
+
+	//ShouldDraw bails on a render mode of none, and the server only sends render mode when it changes, so this sticks
+	for (const unsigned long handle : m_hidden_wearables)
+	{
+		if (C_BaseEntity *const ent{ fromHandle(handle) }) {
+			ent->m_nRenderMode() = RENDER_MODE_NONE;
+		}
+	}
+
+	std::string key{ settingsKey() };
 
 	const float now{ i::global_vars->realtime };
 
@@ -817,5 +1450,8 @@ void SkinChanger::run()
 	{
 		m_full_update_time = 0.0f;
 		i::client_state->ForceFullUpdate();
+
+		//TEMP: checking whether the hitch after picking a head is full updates firing over and over
+		i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins] full update at %.1f\n", now);
 	}
 }

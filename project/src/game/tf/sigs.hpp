@@ -223,11 +223,10 @@ MAKE_SIG(C_EconItemView_GetItemName, mem::findBytes("client.dll", "40 53 48 83 E
 MAKE_SIG(CHudCrosshair_GetDrawPosition, mem::findBytes("client.dll", "48 8B C4 55 53 56 41 54 41 55"));
 MAKE_SIG(CreateTFPlayerAnimState, mem::findBytes("client.dll", "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 48 8B 1D ?? ?? ?? ?? 48 8B F1 48 8B CB"));
 MAKE_SIG(C_TFPlayer_OnNewModel, mem::findBytes("client.dll", "48 89 5C 24 10 56 48 83 EC 20 48 8B D9 E8 ?? ?? ?? ?? 48 8B CB"));
-// the bone merged models a weapon carries (stattrak module), the call after the 0xC28 alloc in the weapon's stattrak setup
-MAKE_SIG(C_TFWeaponAttachmentModel_Ctor, mem::findBytes("client.dll", "B9 28 0C 00 00 E8 ? ? ? ? 48 85 C0 74 69 48 8B C8 E8").offset(18).fixRip());
-MAKE_SIG(C_TFWeaponAttachmentModel_Init, mem::findBytes("client.dll", "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B F8 41 0F B6 F1 45 33 C0 48 8B D9 E8")); // (this, parent, weapon, bIsViewModel), follows the parent bone merged
-MAKE_SIG(C_TFWeaponAttachmentModel_ShouldDraw, mem::findBytes("client.dll", "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 8B 91 1C 0C 00 00 48 8B F1 85 D2 0F 84")); // renderable side (entity + 8), the viewmodel ones never pass, their weapon draws them
-MAKE_SIG(C_BaseEntity_Remove, mem::findBytes("client.dll", "40 53 48 83 EC 20 80 B9 ? ? ? ? 00 48 8B D9 75 ? 48 8B 01 FF 90 ? ? ? ? 84 C0 74 ? 48 8D 8B"));
+// the client's map name -> entity factory table, every registration calls it first (tf_wearable's is the first match)
+MAKE_SIG(GetClassMap, mem::findBytes("client.dll", "48 83 EC 38 E8 ? ? ? ? 48 8D 0D ? ? ? ? 41 B9 E0 0E 00 00").offset(4).fixRip());
+MAKE_SIG(C_BaseEntity_FollowEntity, mem::findBytes("client.dll", "48 89 5C 24 08 57 48 83 EC 20 41 0F B6 F8 48 8B D9 48 85 D2 74 ? 45 33 C0 E8 ? ? ? ? 45 33 C0 33 D2 48 8B CB E8 ? ? ? ? 40 84 FF")); // (this, parent, bBoneMerge)
+MAKE_SIG(C_BaseEntity_Remove,mem::findBytes("client.dll", "40 53 48 83 EC 20 80 B9 ? ? ? ? 00 48 8B D9 75 ? 48 8B 01 FF 90 ? ? ? ? 84 C0 74 ? 48 8D 8B"));
 MAKE_SIG(CHLClient_LevelInitPreEntity, mem::findBytes("client.dll", "40 53 48 83 EC 20 48 8B DA E8 ? ? ? ? 80 3D ? ? ? ? ?"));
 MAKE_SIG(R_LoadNamedSkys, mem::findBytes("engine.dll", "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 81 EC ? ? ? ? 48 8D 05"));
 MAKE_SIG(CTFGCClientSystem_PreInitGC, mem::findBytes("client.dll", "40 53 48 83 EC ? 80 B9 ? ? ? ? ? 48 8B D9 0F 85 ? ? ? ? 4C 8D 0D"));

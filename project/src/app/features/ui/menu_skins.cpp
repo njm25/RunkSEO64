@@ -485,8 +485,7 @@ static void overrideEditor(const std::vector<int> &equipped)
 	changed |= namedCombo("unusual", &o.unusual, unusual_names, static_cast<int>(std::size(unusual_names)));
 
 	stylePicker(o, *shown, changed);
-	//botkiller heads don't render right yet, picker hidden until they do (see BOTKILLER_HEADS in skin_changer.cpp)
-	//botkillerPicker(o, *family, changed);
+	botkillerPicker(o, *family, changed);
 
 	//halloween spells, the game only draws them during the halloween/full moon holiday
 	if (canPumpkin(*shown) || canGreenFlames(*shown))
@@ -542,6 +541,29 @@ static void overrideEditor(const std::vector<int> &equipped)
 }
 
 void Menu::tabSkins()
+{
+	if (ImGui::BeginTabBar("tabbar_skins"))
+	{
+		tabItem("weapons", m_skins_tab, SkinsTab::WEAPONS, "skins");
+		tabItem("player", m_skins_tab, SkinsTab::PLAYER, "skins");
+
+		beginSubTabPage();
+
+		if (m_skins_tab == SkinsTab::WEAPONS) {
+			pageSkinsWeapons();
+		}
+
+		else if (m_skins_tab == SkinsTab::PLAYER) {
+			pageSkinsPlayer();
+		}
+
+		endSubTabPage();
+
+		ImGui::EndTabBar();
+	}
+}
+
+void Menu::pageSkinsWeapons()
 {
 	beginPage("group_skins", m_footer_h);
 	{
@@ -618,6 +640,375 @@ void Menu::tabSkins()
 
 				overrideEditor(equipped);
 			}, 150.0f);
+		}
+		endColumn();
+	}
+	endPage();
+}
+
+//the in-game loadout order, ids are TF_CLASS_x so class_labels works for both
+static constexpr int loadout_classes[]{ TF_CLASS_SCOUT, TF_CLASS_SOLDIER, TF_CLASS_PYRO, TF_CLASS_DEMOMAN, TF_CLASS_HEAVYWEAPONS, TF_CLASS_ENGINEER, TF_CLASS_MEDIC, TF_CLASS_SNIPER, TF_CLASS_SPY };
+
+static int selected_class{};
+
+static int localClass()
+{
+	C_TFPlayer *const local{ i::engine->IsInGame() ? ec->getLocal() : nullptr };
+
+	return local ? local->m_iClass() : TF_CLASS_UNDEFINED;
+}
+
+static void classList()
+{
+	const int current{ localClass() };
+
+	for (const int cls : loadout_classes)
+	{
+		const ClassOverride &o{ skin_changer->classOverride(cls) };
+		const bool is_current{ cls == current };
+
+		if (is_current) {
+			ImGui::PushStyleColor(ImGuiCol_Text, highlightColor());
+		}
+
+		ImGui::PushID(cls);
+
+		if (ImGui::Selectable(std::format("{}{}", o.enabled ? "* " : "  ", class_labels[cls]).c_str(), selected_class == cls)) {
+			selected_class = cls;
+		}
+
+		ImGui::PopID();
+
+		if (is_current) {
+			ImGui::PopStyleColor();
+		}
+	}
+}
+
+static bool cosmeticPicker(const int cls, const int slot_index, CosmeticSlot &slot)
+{
+	bool changed{};
+
+	const SkinCosmetic *const picked{ skin_catalog->cosmetic(slot.def) };
+
+	if (ImGui::BeginCombo("cosmetic", picked ? picked->name.c_str() : "empty", ImGuiComboFlags_HeightLarge))
+	{
+		static std::string filter{};
+
+		if (ImGui::IsWindowAppearing()) {
+			filter.clear();
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		inputStringWithHint("##cosmetic_filter", &filter, "filter");
+
+		if (ImGui::Selectable("empty", slot.def == 0)) {
+			slot = {};
+			changed = true;
+		}
+
+		std::vector<const SkinCosmetic *> shown{};
+
+		for (const SkinCosmetic &cosmetic : skin_catalog->cosmetics())
+		{
+			if ((cosmetic.classes & (1u << cls)) && containsNoCase(cosmetic.name, filter)) {
+				shown.push_back(&cosmetic);
+			}
+		}
+
+		//hundreds per class, only the visible rows get drawn
+		ImGuiListClipper clipper{};
+		clipper.Begin(static_cast<int>(shown.size()));
+
+		while (clipper.Step())
+		{
+			for (int n{ clipper.DisplayStart }; n < clipper.DisplayEnd; n++)
+			{
+				const SkinCosmetic &cosmetic{ *shown[n] };
+				const std::string conflict{ skin_changer->slotConflict(cls, slot_index, cosmetic.def) };
+
+				ImGui::PushID(cosmetic.def);
+				ImGui::BeginDisabled(!conflict.empty());
+
+				if (ImGui::Selectable(cosmetic.name.c_str(), slot.def == cosmetic.def))
+				{
+					slot.def = cosmetic.def;
+
+					//what the old item had might not exist on this one
+					if (!cosmetic.paintable) {
+						slot.paint = 0;
+					}
+
+					if (std::none_of(cosmetic.styles.begin(), cosmetic.styles.end(), [&](const SkinStyle &s) { return s.index == slot.style; })) {
+						slot.style = -1;
+					}
+
+					changed = true;
+				}
+
+				ImGui::EndDisabled();
+
+				if (!conflict.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+					ImGui::SetTooltip("%s", conflict.c_str());
+				}
+
+				ImGui::PopID();
+			}
+		}
+
+		if (shown.empty()) {
+			ImGui::TextDisabled("nothing matches");
+		}
+
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+static ImVec4 paintColor(const int rgb)
+{
+	return { static_cast<float>((rgb >> 16) & 0xFF) / 255.0f, static_cast<float>((rgb >> 8) & 0xFF) / 255.0f, static_cast<float>(rgb & 0xFF) / 255.0f, 1.0f };
+}
+
+static bool paintPicker(CosmeticSlot &slot)
+{
+	bool changed{};
+
+	const std::vector<SkinPaint> &paints{ SkinCatalog::paints() };
+	const bool has_paint{ slot.paint > 0 && slot.paint <= static_cast<int>(paints.size()) };
+
+	if (ImGui::BeginCombo("paint", has_paint ? paints[slot.paint - 1].name : "none", ImGuiComboFlags_HeightLarge))
+	{
+		if (ImGui::Selectable("none", !has_paint)) {
+			slot.paint = 0;
+			changed = true;
+		}
+
+		const float swatch{ ImGui::GetTextLineHeight() };
+
+		for (int n{}; n < static_cast<int>(paints.size()); n++)
+		{
+			const SkinPaint &paint{ paints[n] };
+
+			ImGui::PushID(n);
+
+			ImGui::ColorButton("##red", paintColor(paint.red), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, { swatch, swatch });
+			ImGui::SameLine();
+
+			//team paints show both colours
+			if (paint.blu)
+			{
+				ImGui::ColorButton("##blu", paintColor(paint.blu), ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, { swatch, swatch });
+				ImGui::SameLine();
+			}
+
+			if (ImGui::Selectable(paint.name, slot.paint == n + 1)) {
+				slot.paint = n + 1;
+				changed = true;
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+static bool cosmeticStylePicker(const SkinCosmetic &cosmetic, CosmeticSlot &slot)
+{
+	bool changed{};
+
+	std::string preview{ "item's own" };
+
+	for (const SkinStyle &style : cosmetic.styles)
+	{
+		if (style.index == slot.style) {
+			preview = style.name;
+		}
+	}
+
+	if (ImGui::BeginCombo("style", preview.c_str()))
+	{
+		if (ImGui::Selectable("item's own", slot.style < 0)) {
+			slot.style = -1;
+			changed = true;
+		}
+
+		for (const SkinStyle &style : cosmetic.styles)
+		{
+			ImGui::PushID(style.index);
+
+			if (ImGui::Selectable(style.name.c_str(), slot.style == style.index)) {
+				slot.style = style.index;
+				changed = true;
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+static bool cosmeticUnusualPicker(CosmeticSlot &slot)
+{
+	bool changed{};
+
+	std::string preview{ "none" };
+
+	for (const SkinUnusual &unusual : skin_catalog->unusuals())
+	{
+		if (unusual.id == slot.unusual) {
+			preview = unusual.name;
+		}
+	}
+
+	if (ImGui::BeginCombo("unusual", preview.c_str(), ImGuiComboFlags_HeightLarge))
+	{
+		static std::string filter{};
+
+		if (ImGui::IsWindowAppearing()) {
+			filter.clear();
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		inputStringWithHint("##unusual_filter", &filter, "filter");
+
+		if (ImGui::Selectable("none", slot.unusual == 0)) {
+			slot.unusual = 0;
+			changed = true;
+		}
+
+		for (const SkinUnusual &unusual : skin_catalog->unusuals())
+		{
+			if (!containsNoCase(unusual.name, filter)) {
+				continue;
+			}
+
+			ImGui::PushID(unusual.id);
+
+			if (ImGui::Selectable(unusual.name.c_str(), slot.unusual == unusual.id)) {
+				slot.unusual = unusual.id;
+				changed = true;
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+static void classEditor()
+{
+	if (!selected_class) {
+		selected_class = localClass() > TF_CLASS_UNDEFINED && localClass() < TF_CLASS_CIVILIAN ? localClass() : TF_CLASS_SCOUT;
+	}
+
+	const int cls{ selected_class };
+
+	ClassOverride o{ skin_changer->classOverride(cls) };
+
+	bool changed{};
+
+	ImGui::TextUnformatted(class_labels[cls]);
+
+	changed |= ImGui::Checkbox("override this class", &o.enabled);
+
+	for (int n{}; n < static_cast<int>(o.slots.size()); n++)
+	{
+		CosmeticSlot &slot{ o.slots[n] };
+
+		ImGui::PushID(n);
+
+		sep();
+		ImGui::TextDisabled("slot %d", n + 1);
+
+		changed |= cosmeticPicker(cls, n, slot);
+
+		if (const SkinCosmetic *const cosmetic{ skin_catalog->cosmetic(slot.def) })
+		{
+			if (cosmetic->paintable) {
+				changed |= paintPicker(slot);
+			}
+
+			if (cosmetic->styles.size() >= 2) {
+				changed |= cosmeticStylePicker(*cosmetic, slot);
+			}
+
+			changed |= cosmeticUnusualPicker(slot);
+
+			if (ImGui::Button("clear")) {
+				slot = {};
+				changed = true;
+			}
+		}
+
+		ImGui::PopID();
+	}
+
+	if (changed) {
+		skin_changer->setClassOverride(cls, o);
+	}
+}
+
+void Menu::pageSkinsPlayer()
+{
+	beginPage("group_skins_player", m_footer_h);
+	{
+		beginColumn("group_skins_player0");
+		{
+			section("skins_player_global", "skin changer", 180.0f, []
+			{
+				toggle("active", &cfg::skins_active);
+
+				if (!customWidget("apply now")) {
+					return;
+				}
+
+				if (ImGui::Button("apply now")) {
+					skin_changer->applyNow();
+				}
+			});
+
+			section("skins_classes", "classes", 180.0f, []
+			{
+				if (!customWidget("class list", &cfg::skins_player) || widgetMode() != WidgetMode::DRAW) {
+					return;
+				}
+
+				classList();
+			});
+		}
+		endColumn();
+
+		nextColumn();
+
+		beginColumn("group_skins_player1");
+		{
+			section("skins_cosmetics", "cosmetics", 300.0f, []
+			{
+				if (!customWidget("cosmetic override", &cfg::skins_player) || widgetMode() != WidgetMode::DRAW) {
+					return;
+				}
+
+				if (!skin_catalog->ensure())
+				{
+					ImGui::TextDisabled("waiting for the item schema");
+					return;
+				}
+
+				classEditor();
+			}, 170.0f);
 		}
 		endColumn();
 	}

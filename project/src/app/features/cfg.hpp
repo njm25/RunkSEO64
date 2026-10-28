@@ -335,6 +335,7 @@ MAKE_CFGVAR(freecam_speed, 600.0f);
 MAKE_CFGVAR(skins_active, false);
 MAKE_CFGVAR(skins_apply_delay, 0.4f); //seconds a setting has to sit still before the weapons get rebuilt
 MAKE_CFGVAR(skins_overrides, std::string("")); //json, per weapon family: { "#<base def>": { ... } }, edited from the skins tab
+MAKE_CFGVAR(skins_player, std::string("")); //json, per class: { "scout": { "enabled", "slots": [ 3 cosmetics ] } }, edited from skins > player
 
 MAKE_CFGVAR(tracers_active, true);
 MAKE_CFGVAR(tracers_type, 0); // 0 = beams, 1+ = particle type

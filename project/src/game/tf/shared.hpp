@@ -8072,6 +8072,8 @@ namespace attributes {
 	constexpr uint16_t killstreak_tier = 2025;
 	constexpr uint16_t killstreak_effect = 2013;
 	constexpr uint16_t killstreak_idleeffect = 2014;
+	constexpr uint16_t set_item_tint_rgb = 142; //paint, the only colour of a plain paint can, red for team paints
+	constexpr uint16_t set_item_tint_rgb_2 = 261; //team paints' blu colour
 	constexpr uint16_t kill_eater = 214;
 	constexpr uint16_t kill_eater_score_type = 292;
 	constexpr uint16_t halloween_pumpkin_explosions = 1007;

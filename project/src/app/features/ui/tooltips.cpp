@@ -49,6 +49,7 @@ static const std::unordered_map<std::string_view, const char *> tooltips
 	{ "skins_active", "looks for your own weapons (war paints, australium, killstreaks, unusuals...), only you see them. changing them reloads the entities, so there's a short hitch" },
 	{ "skins_apply_delay", "how long a setting has to stay put before the weapons get rebuilt, so scrolling through a list doesn't hitch on every entry" },
 	{ "skins_overrides", "the per weapon overrides, each one covers every variant of that weapon (stock, strange, festive, botkiller...)" },
+	{ "skins_player", "per class cosmetics, three slots like the loadout. each slot shows on one of your real cosmetics, so wear as many as you want to show" },
 
 	{ "fakelag_break_lc", "choke long enough to move outside of lag compensation range" },
 	{ "seed_pred_resync_interval", "how often to resync the server time used for prediction" },

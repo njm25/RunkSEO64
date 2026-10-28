@@ -26,7 +26,8 @@ const std::vector<Menu::SearchPage> &Menu::searchPages()
 		{ "visuals > colors", MenuTab::VISUALS, static_cast<int>(VisualsTab::COLORS), &Menu::pageVisualsColors },
 		{ "visuals > menu", MenuTab::VISUALS, static_cast<int>(VisualsTab::MENU), &Menu::pageVisualsMenu },
 		{ "misc", MenuTab::MISC, 0, &Menu::tabMisc },
-		{ "skins", MenuTab::SKINS, 0, &Menu::tabSkins },
+		{ "skins > weapons", MenuTab::SKINS, static_cast<int>(SkinsTab::WEAPONS), &Menu::pageSkinsWeapons },
+		{ "skins > player", MenuTab::SKINS, static_cast<int>(SkinsTab::PLAYER), &Menu::pageSkinsPlayer },
 	};
 
 	return pages;

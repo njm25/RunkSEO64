@@ -24,6 +24,11 @@ enum class StatsTab
 	OVERVIEW, CLASSES, MAPS, WEAPONS
 };
 
+enum class SkinsTab
+{
+	WEAPONS, PLAYER
+};
+
 class Menu final : public HasUnload
 {
 public:
@@ -39,6 +44,7 @@ private:
 	AimbotTab m_aimbot_tab{ AimbotTab::MAIN };
 	VisualsTab m_visuals_tab{ VisualsTab::ENTITIES };
 	StatsTab m_stats_tab{ StatsTab::OVERVIEW };
+	SkinsTab m_skins_tab{ SkinsTab::WEAPONS };
 	int m_navigate_frames{}; //tab bars apply a forced selection a frame late, so it's held for a couple of frames
 
 private:
@@ -93,6 +99,8 @@ private:
 
 	void tabMisc();
 	void tabSkins();
+	void pageSkinsWeapons();
+	void pageSkinsPlayer();
 	void tabPlayers();
 	void tabBinds();
 	void tabStatistics();

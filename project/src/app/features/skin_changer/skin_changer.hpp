@@ -25,6 +25,25 @@ struct WeaponOverride final
 	bool operator==(const WeaponOverride &) const = default;
 };
 
+//one of a class's three cosmetic slots
+struct CosmeticSlot final
+{
+	int def{}; //0 empty
+	int paint{}; //index into SkinCatalog::paints() + 1, 0 none
+	int style{ -1 }; //-1 the item's own
+	int unusual{}; //effect id, 0 none
+
+	bool operator==(const CosmeticSlot &) const = default;
+};
+
+struct ClassOverride final
+{
+	bool enabled{};
+	std::array<CosmeticSlot, 3> slots{};
+
+	bool operator==(const ClassOverride &) const = default;
+};
+
 //which weapons the client draws each halloween spell for
 bool canPumpkin(const SkinItem &item);
 bool canGreenFlames(const SkinItem &item);
@@ -35,15 +54,17 @@ struct BotkillerHead final
 	unsigned long weapon{}; //handles, they go stale instead of dangling
 	unsigned long world{};
 	unsigned long view{};
-	unsigned long view_parent{}; //the viewmodel it follows, respawned if that ever changes
+	uintptr_t weapon_ent{}; //the weapon object the heads were made for, full updates recreate it under the same handle
 	int def{}; //botkiller it was made from
 	int team{};
+};
 
-	//resolved every frame, ShouldDraw gets asked a lot
-	uintptr_t world_ent{};
-	uintptr_t view_ent{};
-	bool world_drawn{};
-	bool view_drawn{};
+//a cosmetic we spawned ourselves for a slot past your real cosmetics
+struct SpawnedCosmetic final
+{
+	unsigned long handle{};
+	CosmeticSlot slot{};
+	int team{};
 };
 
 //client side looks for your own weapons, nobody else sees them
@@ -58,10 +79,28 @@ private:
 
 	std::vector<BotkillerHead> m_heads{};
 
+	std::string m_player_parsed_from{}; //cfg::skins_player the array below was read from
+	std::array<ClassOverride, TF_CLASS_COUNT_ALL> m_player{}; //by TF_CLASS_x
+
+	std::vector<unsigned long> m_hidden_wearables{}; //handles of your real cosmetics the override has no slot for
+
+	std::vector<CosmeticSlot> m_extra_slots{}; //slots past your real cosmetics, they get a spawned one each
+	std::vector<SpawnedCosmetic> m_spawned{};
+
+	//the player's m_nBody with the spawned cosmetics' hidden bodygroups on top, the game only does that for real wearables
+	uintptr_t m_body_player{}; //the player object these are for
+	int m_body_base{}; //m_nBody as the game last had it
+	int m_body_written{ -1 }; //what we last wrote, -1 nothing
+
 private:
 	void parse();
+	void parsePlayer();
+	void applyPlayer(C_TFPlayer *const local);
 	void updateHeads();
 	void removeHeads();
+	void updateSpawned();
+	void removeSpawned();
+	void updateBodygroups(C_TFPlayer *const local);
 
 public:
 	bool onLevelInit() override;
@@ -78,9 +117,6 @@ public:
 	//rebuild the weapons right away instead of after the settle delay
 	void applyNow();
 
-	//C_TFWeaponAttachmentModel::ShouldDraw for the heads we spawned, nullopt for the game's own attachments
-	std::optional<bool> headShouldDraw(const uintptr_t ent) const;
-
 public:
 	const std::unordered_map<int, WeaponOverride> &overrides();
 	const WeaponOverride *find(const int base);
@@ -96,6 +132,13 @@ public:
 
 	//families of the weapons you're holding right now, by base def
 	std::vector<int> equippedFamilies() const;
+
+public:
+	const ClassOverride &classOverride(const int cls);
+	void setClassOverride(const int cls, ClassOverride override);
+
+	//why a cosmetic can't go in a slot next to the class's other slots, empty when it can
+	std::string slotConflict(const int cls, const int slot, const int def);
 };
 
 MAKE_UNIQUE(SkinChanger, skin_changer);

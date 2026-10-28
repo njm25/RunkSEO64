@@ -2464,20 +2464,6 @@ MAKE_HOOK(
 }
 
 MAKE_HOOK(
-	C_TFWeaponAttachmentModel_ShouldDraw,
-	s::C_TFWeaponAttachmentModel_ShouldDraw.get(),
-	bool,
-	void *rcx)
-{
-	//rcx is the renderable part, the entity starts right before it
-	if (const std::optional<bool> drawn{ skin_changer->headShouldDraw(reinterpret_cast<uintptr_t>(rcx) - sizeof(void *)) }) {
-		return *drawn;
-	}
-
-	return CALL_ORIGINAL(rcx);
-}
-
-MAKE_HOOK(
 	CHudCrosshair_GetDrawPosition,
 	s::CHudCrosshair_GetDrawPosition.get(),
 	void,

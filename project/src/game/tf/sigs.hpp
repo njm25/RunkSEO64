@@ -223,6 +223,8 @@ MAKE_SIG(C_EconItemView_GetItemName, mem::findBytes("client.dll", "40 53 48 83 E
 MAKE_SIG(CHudCrosshair_GetDrawPosition, mem::findBytes("client.dll", "48 8B C4 55 53 56 41 54 41 55"));
 MAKE_SIG(CreateTFPlayerAnimState, mem::findBytes("client.dll", "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 48 8B 1D ?? ?? ?? ?? 48 8B F1 48 8B CB"));
 MAKE_SIG(C_TFPlayer_OnNewModel, mem::findBytes("client.dll", "48 89 5C 24 10 56 48 83 EC 20 48 8B D9 E8 ?? ?? ?? ?? 48 8B CB"));
+// the imm32 in RecvPropUtlVector("m_hMyWearables", offset, ...) in DT_BasePlayer's recv table setup, our netvar dump gets this utl vector prop wrong
+MAKE_SIG(C_BasePlayer_MyWearablesOffset, mem::findBytes("client.dll", "48 8D 0D ? ? ? ? 41 B8 ? ? ? ? 44 8D 4E 04 48 8D 15 ? ? ? ? 0F 10 00").offset(9));
 // the client's map name -> entity factory table, every registration calls it first (tf_wearable's is the first match)
 MAKE_SIG(GetClassMap, mem::findBytes("client.dll", "48 83 EC 38 E8 ? ? ? ? 48 8D 0D ? ? ? ? 41 B9 E0 0E 00 00").offset(4).fixRip());
 MAKE_SIG(C_BaseEntity_FollowEntity, mem::findBytes("client.dll", "48 89 5C 24 08 57 48 83 EC 20 41 0F B6 F8 48 8B D9 48 85 D2 74 ? 45 33 C0 E8 ? ? ? ? 45 33 C0 33 D2 48 8B CB E8 ? ? ? ? 40 84 FF")); // (this, parent, bBoneMerge)

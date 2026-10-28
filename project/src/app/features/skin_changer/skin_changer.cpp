@@ -452,16 +452,29 @@ struct HandleVector final
 	unsigned long *elements{};
 };
 
+//the player's m_hMyWearables, nullptr when the offset couldn't be found
+static const HandleVector *myWearables(C_TFPlayer *const local)
+{
+	//NETVAR(m_hMyWearables) resolves to the wrong place for a utl vector prop, so the offset comes from the recv table setup
+	static const int offset{ s::C_BasePlayer_MyWearablesOffset.get() ? *reinterpret_cast<const int *>(s::C_BasePlayer_MyWearablesOffset.get()) : 0 };
+
+	if (!local || offset <= 0) {
+		return nullptr;
+	}
+
+	return reinterpret_cast<const HandleVector *>(reinterpret_cast<uintptr_t>(local) + offset);
+}
+
 //your cosmetic wearables (not shields, boots and other weapon slot ones), by entity index so the order holds across updates
 static std::vector<C_BaseEntity *> realCosmetics(C_TFPlayer *const local)
 {
 	std::vector<C_BaseEntity *> out{};
 
-	if (!local) {
+	const HandleVector *const wearables{ myWearables(local) };
+
+	if (!wearables) {
 		return out;
 	}
-
-	const HandleVector *const wearables{ reinterpret_cast<const HandleVector *>(&local->m_hMyWearables()) };
 
 	for (int n{}; n < wearables->size && wearables->memory; n++)
 	{
@@ -565,11 +578,19 @@ void SkinChanger::applyPlayer(C_TFPlayer *const local)
 
 		const CosmeticSlot &slot{ *active[n] };
 
-		//the game picks the model, skin, style, bodygroups and particles from the def when the wearable is created
+		//skin and bodygroups follow the def by themselves, the model doesn't: the server sent the real item's,
+		//and the game only works the model out from the def (ValidateModelIndex) on its own updates
+		const bool swapped{ wearable->m_iItemDefinitionIndex() != slot.def };
+
 		wearable->m_iItemDefinitionIndex() = slot.def;
 
 		if (list) {
 			setSlotAttributes(list, slot, team);
+		}
+
+		//C_EconEntity::ValidateModelIndex, after the attributes so the picked style's model counts
+		if (swapped) {
+			mem::callVirtual<236, void>(wearables[n]);
 		}
 	}
 
@@ -1124,25 +1145,27 @@ void SkinChanger::updateSpawned()
 		was_cleared = false;
 
 		//TEMP: why a real cosmetic isn't counted, everything in m_hMyWearables
-		const HandleVector *const wearables{ reinterpret_cast<const HandleVector *>(&local->m_hMyWearables()) };
+		const HandleVector *const wearables{ myWearables(local) };
+		const HandleVector empty{};
+		const HandleVector &list{ wearables ? *wearables : empty };
 
-		i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]   m_hMyWearables: size %d memory %p, body %d (game's %d)\n",
-			wearables->size, wearables->memory, local->m_nBody(), m_body_base);
+		i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]   m_hMyWearables: found %d size %d memory %p, body %d (game's %d)\n",
+			wearables != nullptr, list.size, list.memory, local->m_nBody(), m_body_base);
 
-		for (int n{}; n < wearables->size && wearables->memory && n < 16; n++)
+		for (int n{}; n < list.size && list.memory && n < 16; n++)
 		{
-			C_BaseEntity *const ent{ fromHandle(wearables->memory[n]) };
+			C_BaseEntity *const ent{ fromHandle(list.memory[n]) };
 
 			if (!ent)
 			{
-				i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]     wearable 0x%lX: not here\n", wearables->memory[n]);
+				i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]     wearable 0x%lX: not here\n", list.memory[n]);
 				continue;
 			}
 
 			const int def{ econ(ent)->m_iItemDefinitionIndex() };
 
 			i::cvar->ConsoleColorPrintf({ 255, 170, 0, 255 }, "[skins]     wearable 0x%lX: class %d def %d owner ok %d in catalog %d dormant %d\n",
-				wearables->memory[n], static_cast<int>(ent->GetClassId()), def, ent->m_hOwnerEntity().Get() == local, skin_catalog->cosmetic(def) != nullptr, ent->IsDormant());
+				list.memory[n], static_cast<int>(ent->GetClassId()), def, ent->m_hOwnerEntity().Get() == local, skin_catalog->cosmetic(def) != nullptr, ent->IsDormant());
 		}
 
 		for (const SpawnedCosmetic &spawned : m_spawned)

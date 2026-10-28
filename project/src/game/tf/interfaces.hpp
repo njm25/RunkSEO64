@@ -2,6 +2,9 @@
 
 #include "entities.hpp"
 
+#include <cstdarg>
+#include <cstdio>
+
 class IBaseClientDLL
 {
 public:
@@ -70,7 +73,15 @@ public:
 
 	void ConsoleColorPrintf(const Color &clr, const char *pFormat, ...)
 	{
-		mem::callVirtual<23, ConVar *, const Color &, const char *>(this, clr, pFormat);
+		//the varargs can't be forwarded through callVirtual, format here and hand the game a plain string
+		char buf[1024]{};
+
+		va_list args;
+		va_start(args, pFormat);
+		vsnprintf(buf, sizeof(buf), pFormat, args);
+		va_end(args);
+
+		mem::callVirtual<23, ConVar *, const Color &, const char *, const char *>(this, clr, "%s", buf);
 	}
 };
 
@@ -342,6 +353,17 @@ public:
 class IVModelInfo
 {
 public:
+	const model_t *GetModel(int modelindex)
+	{
+		return mem::callVirtual<1, const model_t *, int>(this, modelindex);
+	}
+
+	//gives a model the server never precached an index of its own, GetModelIndex finds it after (the game does this for item models)
+	int RegisterDynamicModel(const char *name, bool client_side)
+	{
+		return mem::callVirtual<52, int, const char *, bool>(this, name, client_side);
+	}
+
 	int GetModelIndex(const char *name)
 	{
 		return mem::callVirtual<2, int, const char *>(this, name);

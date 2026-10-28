@@ -43,6 +43,20 @@ static float animate(const float cur, const float target, const float duration)
 	return cur < target ? std::min(cur + step, target) : std::max(cur - step, target);
 }
 
+void Menu::beginSubTabPage()
+{
+	const float e{ easeOut(m_sub_tab_anim) };
+
+	//on top of the main tab's fade, which is already in the style alpha
+	ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * e);
+	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (1.0f - e) * scaled(6.0f));
+}
+
+void Menu::endSubTabPage()
+{
+	ImGui::PopStyleVar();
+}
+
 void Menu::run()
 {
 	aa_hovered = false;
@@ -138,6 +152,7 @@ void Menu::run()
 			tabItem("exploits", m_tab, MenuTab::EXPLOITS);
 			tabItem("visuals", m_tab, MenuTab::VISUALS);
 			tabItem("misc", m_tab, MenuTab::MISC);
+			tabItem("skins", m_tab, MenuTab::SKINS);
 			tabItem("players", m_tab, MenuTab::PLAYERS);
 			tabItem("binds", m_tab, MenuTab::BINDS);
 			tabItem("statistics", m_tab, MenuTab::STATISTICS);
@@ -155,15 +170,25 @@ void Menu::run()
 				ImGui::PopStyleColor();
 			}
 
-			//fade and slide the page in whenever what's shown changes
-			const int tab_key{ m_search.empty() ? static_cast<int>(m_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) : -2 };
+			//fade and slide the whole tab in when the main tab changes
+			const int tab_key{ m_search.empty() ? static_cast<int>(m_tab) : -2 };
+			const bool tab_changed{ tab_key != m_tab_key };
 
-			if (tab_key != m_tab_key) {
+			if (tab_changed) {
 				m_tab_anim = m_tab_key == -1 ? 1.0f : 0.0f; //not on the first frame, the open animation covers that
 				m_tab_key = tab_key;
 			}
 
+			//a sub tab change only animates the page under its bar, the main tab animation already covers a main tab change
+			const int sub_tab_key{ static_cast<int>(m_stats_tab) * 100 + static_cast<int>(m_aimbot_tab) * 10 + static_cast<int>(m_visuals_tab) };
+
+			if (sub_tab_key != m_sub_tab_key) {
+				m_sub_tab_anim = tab_changed || m_sub_tab_key == -1 ? 1.0f : 0.0f;
+				m_sub_tab_key = sub_tab_key;
+			}
+
 			m_tab_anim = animate(m_tab_anim, 1.0f, 0.15f);
+			m_sub_tab_anim = animate(m_sub_tab_anim, 1.0f, 0.15f);
 
 			const float tab_e{ easeOut(m_tab_anim) };
 
@@ -200,6 +225,11 @@ void Menu::run()
 
 					case MenuTab::MISC: {
 						tabMisc();
+						break;
+					}
+
+					case MenuTab::SKINS: {
+						tabSkins();
 						break;
 					}
 

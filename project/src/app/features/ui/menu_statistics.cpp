@@ -226,9 +226,7 @@ void Menu::tabStatistics()
 
 	if (ImGui::BeginTabBar("tabbar_stats"))
 	{
-		enum class StatsTab { OVERVIEW, CLASSES, MAPS, WEAPONS };
-
-		static StatsTab tab{ StatsTab::OVERVIEW };
+		StatsTab &tab{ m_stats_tab };
 
 		if (ImGui::BeginTabItem("overview")) {
 			tab = StatsTab::OVERVIEW;
@@ -249,6 +247,8 @@ void Menu::tabStatistics()
 			tab = StatsTab::WEAPONS;
 			ImGui::EndTabItem();
 		}
+
+		beginSubTabPage();
 
 		ImGui::BeginChild("group_stats", { 0.0f, -m_footer_h }, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -470,6 +470,8 @@ void Menu::tabStatistics()
 		}
 
 		ImGui::EndChild();
+
+		endSubTabPage();
 
 		ImGui::EndTabBar();
 	}

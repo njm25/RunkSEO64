@@ -333,25 +333,8 @@ MAKE_CFGVAR(freecam_active, false);
 MAKE_CFGVAR(freecam_speed, 600.0f);
 
 MAKE_CFGVAR(skins_active, false);
-MAKE_CFGVAR(skins_primary, 0); //paint kit id, 0 = none
-MAKE_CFGVAR(skins_secondary, 0);
-MAKE_CFGVAR(skins_melee, 0);
-MAKE_CFGVAR(skins_wear, 0); // (0 = factory new) (1 = minimal wear) (2 = field tested) (3 = well worn) (4 = battle scarred)
-MAKE_CFGVAR(skins_primary_unusual, 0); // (0 = none) (1 = hot) (2 = isotope) (3 = cool) (4 = energy orb)
-MAKE_CFGVAR(skins_primary_sheen, 0); // (0 = none) (1 = team shine) ... (7 = hot rod)
-MAKE_CFGVAR(skins_primary_australium, false);
-MAKE_CFGVAR(skins_primary_festive, false);
-MAKE_CFGVAR(skins_primary_style, 0); // (0 = the item's own) (n = style n - 1)
-MAKE_CFGVAR(skins_secondary_unusual, 0); // (0 = none) (1 = hot) (2 = isotope) (3 = cool) (4 = energy orb)
-MAKE_CFGVAR(skins_secondary_sheen, 0); // (0 = none) (1 = team shine) ... (7 = hot rod)
-MAKE_CFGVAR(skins_secondary_australium, false);
-MAKE_CFGVAR(skins_secondary_festive, false);
-MAKE_CFGVAR(skins_secondary_style, 0); // (0 = the item's own) (n = style n - 1)
-MAKE_CFGVAR(skins_melee_unusual, 0); // (0 = none) (1 = hot) (2 = isotope) (3 = cool) (4 = energy orb)
-MAKE_CFGVAR(skins_melee_sheen, 0); // (0 = none) (1 = team shine) ... (7 = hot rod)
-MAKE_CFGVAR(skins_melee_australium, false);
-MAKE_CFGVAR(skins_melee_festive, false);
-MAKE_CFGVAR(skins_melee_style, 0); // (0 = the item's own) (n = style n - 1)
+MAKE_CFGVAR(skins_apply_delay, 0.4f); //seconds a setting has to sit still before the weapons get rebuilt
+MAKE_CFGVAR(skins_overrides, std::string("")); //json, per weapon family: { "#<base def>": { ... } }, edited from the skins tab
 
 MAKE_CFGVAR(tracers_active, true);
 MAKE_CFGVAR(tracers_type, 0); // 0 = beams, 1+ = particle type

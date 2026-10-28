@@ -369,6 +369,8 @@ void Menu::tabVisuals()
 		tabItem("colors", m_visuals_tab, VisualsTab::COLORS, "visuals");
 		tabItem("menu", m_visuals_tab, VisualsTab::MENU, "visuals");
 
+		beginSubTabPage();
+
 		if (m_visuals_tab == VisualsTab::ENTITIES) {
 			pageVisualsEntities();
 		}
@@ -392,6 +394,8 @@ void Menu::tabVisuals()
 		else if (m_visuals_tab == VisualsTab::AWARENESS) {
 			pageVisualsAwareness();
 		}
+
+		endSubTabPage();
 
 		ImGui::EndTabBar();
 	}

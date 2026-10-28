@@ -91,7 +91,7 @@ static const std::vector<Requirement> &requirements()
 		{ "sentry_*", { "CEngineVGui_Paint", "CParticleSystemMgr_DrawRenderCache" } },
 		{ "sticky_*", { "CEngineVGui_Paint", "CParticleSystemMgr_DrawRenderCache" } },
 		{ "freecam_*", { "ClientModeShared_OverrideView" } },
-		{ "skins_*", { "CHLClient_FrameStageNotify" }, { "CAttributeList_SetRuntimeAttributeValue", "CEconItemSchema_GetAttributeDefinition", "CTFItemDefinition_GetValidPaintkits", "CClientState_ForceFullUpdate" } }
+		{ "skins_*", { "CHLClient_FrameStageNotify" }, { "CAttributeList_SetRuntimeAttributeValue", "CEconItemSchema_GetAttributeDefinition", "CTFItemDefinition_GetValidPaintkits", "CClientState_ForceFullUpdate", "GetItemSchema", "CEconItemSchema_GetItemDefinition" } }
 	};
 
 	return reqs;

@@ -1,0 +1,525 @@
+#include "skin_catalog.hpp"
+
+#include "../statistics/statistics.hpp"
+
+#include <set>
+
+//the definition keeps its prefab merged keyvalues right after the vtable
+constexpr size_t ITEM_DEF_KV_OFFSET{ 8 };
+
+//the schema's own reload counter, game code caches attribute lookups on it too
+constexpr size_t SCHEMA_VERSION_OFFSET{ 8 };
+
+//anything past this isn't a real item, GetItemDefinition hands back its shared fallback for it
+constexpr int INVALID_DEF{ 65535 };
+
+//attributes that only change the look, two items that differ in nothing else are the same weapon
+static const std::set<std::string> cosmetic_attributes
+{
+	"paintkit_proto_def_index", "set_item_texture_wear", "custom_paintkit_seed_lo", "custom_paintkit_seed_hi",
+	"has team color paintkit", "texture_wear_default", "weapon_uses_stattrak_module", "weapon_stattrak_module_scale",
+	"weapon_allow_inspect", "is australium item", "item style override", "is_festivized", "loot rarity",
+	"kill eater", "kill eater score type", "kill eater 2", "kill eater score type 2", "kill eater 3", "kill eater score type 3",
+	"turn to gold", "disable fancy class select anim", "min_viewmodel_offset", "inspect_viewmodel_offset",
+	"attach particle effect", "attach particle effect static", "killstreak tier", "killstreak effect", "killstreak idleeffect",
+	"limited quantity item", "cannot trade", "always tradable", "never craftable", "unique craft index",
+	"custom employee number", "tool target item", "is commodity", "set supply crate series", "series number",
+	"gifter account id", "event date", "cannot restore", "is marketable", "item name text override"
+};
+
+static const std::pair<const char *, int> class_names[]
+{
+	{ "scout", TF_CLASS_SCOUT }, { "sniper", TF_CLASS_SNIPER }, { "soldier", TF_CLASS_SOLDIER },
+	{ "demoman", TF_CLASS_DEMOMAN }, { "medic", TF_CLASS_MEDIC }, { "heavy", TF_CLASS_HEAVYWEAPONS },
+	{ "pyro", TF_CLASS_PYRO }, { "spy", TF_CLASS_SPY }, { "engineer", TF_CLASS_ENGINEER }
+};
+
+static std::string lower(std::string str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+	return str;
+}
+
+//numbers in the schema get parsed into ints and floats, everything else stays a string
+static std::string kvValue(KeyValues *const kv)
+{
+	if (!kv) {
+		return {};
+	}
+
+	switch (kv->m_iDataType)
+	{
+		case TYPE_STRING: {
+			return kv->m_sValue ? kv->m_sValue : "";
+		}
+
+		case TYPE_INT: {
+			return std::to_string(kv->m_iValue);
+		}
+
+		case TYPE_FLOAT: {
+			return std::format("{}", kv->m_flValue);
+		}
+
+		case TYPE_WSTRING: {
+			return kv->m_wsValue ? utils::wideToUtf8(kv->m_wsValue) : "";
+		}
+
+		default: {
+			return {};
+		}
+	}
+}
+
+static KeyValues *child(KeyValues *const kv, const char *const name)
+{
+	if (!kv) {
+		return nullptr;
+	}
+
+	for (KeyValues *sub{ kv->m_pSub }; sub; sub = sub->m_pPeer)
+	{
+		const char *const sub_name{ sub->GetName() };
+
+		if (sub_name && _stricmp(sub_name, name) == 0) {
+			return sub;
+		}
+	}
+
+	return nullptr;
+}
+
+static std::string childValue(KeyValues *const kv, const char *const name)
+{
+	return kvValue(child(kv, name));
+}
+
+//"TF_WEAPON_ROCKETLAUNCHER" -> "Rocketlauncher", "Upgradeable TF_WEAPON_X" -> "X", "The Ambassador" -> "Ambassador"
+static std::string tidyName(std::string name)
+{
+	for (const char *const prefix : { "The ", "Upgradeable " })
+	{
+		if (name.starts_with(prefix)) {
+			name.erase(0, strlen(prefix));
+		}
+	}
+
+	if (name.starts_with("TF_WEAPON_"))
+	{
+		name = lower(name.substr(10));
+		std::replace(name.begin(), name.end(), '_', ' ');
+
+		if (!name.empty()) {
+			name.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(name.front())));
+		}
+	}
+
+	return name;
+}
+
+static std::string itemName(const int def, KeyValues *const kv)
+{
+	if (const char *const name{ weaponName(def) }) {
+		return std::string{ name }.starts_with("The ") ? std::string{ name }.substr(4) : name;
+	}
+
+	return tidyName(childValue(kv, "name"));
+}
+
+//what the gameplay side of the item boils down to, the cosmetic attributes left out
+static std::string gameplaySignature(KeyValues *const kv)
+{
+	std::vector<std::string> parts{};
+
+	//"attributes" { "name" { "attribute_class" ... "value" ... } }
+	if (KeyValues *const attributes{ child(kv, "attributes") })
+	{
+		for (KeyValues *attr{ attributes->m_pSub }; attr; attr = attr->m_pPeer)
+		{
+			const std::string name{ lower(attr->GetName() ? attr->GetName() : "") };
+
+			if (!name.empty() && !cosmetic_attributes.contains(name)) {
+				parts.push_back(name + "=" + childValue(attr, "value"));
+			}
+		}
+	}
+
+	//"static_attrs" { "name" "value" }
+	if (KeyValues *const static_attrs{ child(kv, "static_attrs") })
+	{
+		for (KeyValues *attr{ static_attrs->m_pSub }; attr; attr = attr->m_pPeer)
+		{
+			const std::string name{ lower(attr->GetName() ? attr->GetName() : "") };
+
+			if (!name.empty() && !cosmetic_attributes.contains(name)) {
+				parts.push_back(name + "=" + kvValue(attr));
+			}
+		}
+	}
+
+	std::sort(parts.begin(), parts.end());
+
+	std::string out{};
+
+	for (const std::string &part : parts) {
+		out += part + ";";
+	}
+
+	return out;
+}
+
+static bool hasAttribute(KeyValues *const kv, const char *const name)
+{
+	return child(child(kv, "attributes"), name) || child(child(kv, "static_attrs"), name);
+}
+
+static SkinItem readItem(const int def, KeyValues *const kv)
+{
+	SkinItem item{};
+
+	item.def = def;
+	item.name = itemName(def, kv);
+	item.item_class = childValue(kv, "item_class");
+	item.slot = lower(childValue(kv, "item_slot"));
+
+	const std::string internal_name{ childValue(kv, "name") };
+
+	item.stock = childValue(kv, "baseitem") == "1";
+	item.upgradeable = internal_name.starts_with("Upgradeable ");
+	item.festive = internal_name.find("Festive") != std::string::npos;
+	item.decorated = (def >= 15000 && def < 16000) || childValue(child(kv, "tags"), "can_apply_paintkit") == "1";
+
+	if (KeyValues *const used_by{ child(kv, "used_by_classes") })
+	{
+		for (const auto &[name, id] : class_names)
+		{
+			if (child(used_by, name)) {
+				item.classes |= 1u << id;
+			}
+		}
+	}
+
+	//all class melees don't list anyone
+	if (!item.classes)
+	{
+		for (const auto &[name, id] : class_names) {
+			item.classes |= 1u << id;
+		}
+	}
+
+	KeyValues *const visuals{ child(kv, "visuals") };
+
+	//quick-fix and vaccinator keep their visuals per team
+	const bool festive_models{ child(visuals, "attached_models_festive") || child(child(kv, "visuals_red"), "attached_models_festive") };
+
+	item.festivizable = festive_models && childValue(child(kv, "tags"), "can_be_festivized") == "1";
+
+	if (KeyValues *const styles{ child(visuals, "styles") })
+	{
+		for (KeyValues *style{ styles->m_pSub }; style; style = style->m_pPeer)
+		{
+			const char *const index{ style->GetName() };
+
+			if (!index || !isdigit(static_cast<unsigned char>(*index))) {
+				continue;
+			}
+
+			SkinStyle out{ atoi(index), childValue(style, "name") };
+
+			//the australium look is a gold skin on the normal model
+			if (const std::string icon{ lower(childValue(style, "image_inventory")) }; icon.ends_with("_gold"))
+			{
+				item.australium = true;
+				out.name = "australium";
+			}
+
+			//localisation tokens aren't worth showing
+			if (out.name.empty() || out.name.front() == '#') {
+				out.name = std::format("style {}", out.index);
+			}
+
+			item.styles.push_back(out);
+		}
+
+		std::sort(item.styles.begin(), item.styles.end(), [](const SkinStyle &a, const SkinStyle &b) { return a.index < b.index; });
+	}
+
+	if (CUtlVector<int> *const kits{ tf_utils::getValidPaintKits(def) })
+	{
+		for (int n{}; n < kits->Count(); n++) {
+			item.paintkits.push_back((*kits)[n]);
+		}
+	}
+
+	item.stattrak = !item.paintkits.empty() || hasAttribute(kv, "weapon_uses_stattrak_module");
+
+	item.extra_wearable = childValue(kv, "extra_wearable");
+	item.extra_wearable_vm = childValue(kv, "extra_wearable_vm");
+	item.botkiller = !item.extra_wearable.empty() && internal_name.find("Botkiller") != std::string::npos;
+
+	if (const std::string skin{ childValue(child(kv, "visuals_red"), "skin") }; !skin.empty()) {
+		item.skin_red = atoi(skin.c_str());
+	}
+
+	if (const std::string skin{ childValue(child(kv, "visuals_blu"), "skin") }; !skin.empty()) {
+		item.skin_blu = atoi(skin.c_str());
+	}
+
+	return item;
+}
+
+void SkinCatalog::build(void *const schema)
+{
+	m_items.clear();
+	m_families.clear();
+	m_item_index.clear();
+
+	void *const fallback{ s::CEconItemSchema_GetItemDefinition.call<void *>(schema, INVALID_DEF) };
+
+	//what decides which items are one weapon, kept per family for the second merge pass
+	std::unordered_map<std::string, size_t> family_by_key{};
+	std::vector<std::string> family_signature{};
+
+	std::vector<std::pair<SkinItem, std::string>> pending{}; //item, family key
+
+	for (int def{}; def < INVALID_DEF; def++)
+	{
+		void *const item_def{ s::CEconItemSchema_GetItemDefinition.call<void *>(schema, def) };
+
+		if (!item_def || item_def == fallback) {
+			continue;
+		}
+
+		KeyValues *const kv{ *reinterpret_cast<KeyValues **>(reinterpret_cast<uintptr_t>(item_def) + ITEM_DEF_KV_OFFSET) };
+
+		if (!kv) {
+			continue;
+		}
+
+		const std::string item_class{ childValue(kv, "item_class") };
+
+		if (!item_class.starts_with("tf_weapon_") && item_class != "saxxy") {
+			continue;
+		}
+
+		SkinItem item{ readItem(def, kv) };
+
+		//the base name ties the class specific stock copies together (shotguns, pistols), the item class is the fallback
+		std::string key{ lower(childValue(kv, "base_item_name")) };
+
+		if (key.empty()) {
+			key = item_class;
+		}
+
+		//all class melees share one item class and have no stats of their own, the model is what tells them apart
+		if (item_class == "saxxy") {
+			key += "|" + lower(childValue(kv, "model_player"));
+		}
+
+		key += "|" + gameplaySignature(kv);
+
+		pending.emplace_back(std::move(item), std::move(key));
+	}
+
+	//first pass, by key
+	std::vector<std::vector<size_t>> groups{};
+
+	for (size_t n{}; n < pending.size(); n++)
+	{
+		const std::string &key{ pending[n].second };
+
+		auto it{ family_by_key.find(key) };
+
+		if (it == family_by_key.end())
+		{
+			it = family_by_key.emplace(key, groups.size()).first;
+			groups.emplace_back();
+			family_signature.push_back(key.substr(key.rfind('|') + 1));
+		}
+
+		groups[it->second].push_back(n);
+	}
+
+	//the base item of a group: the free stock one, else the lowest non decorated def
+	auto pickBase = [&](const std::vector<size_t> &group) -> size_t
+	{
+		size_t best{ group.front() };
+
+		for (const size_t n : group)
+		{
+			const SkinItem &a{ pending[n].first };
+			const SkinItem &b{ pending[best].first };
+
+			if (a.stock != b.stock) {
+				best = a.stock ? n : best;
+				continue;
+			}
+
+			if (a.decorated != b.decorated) {
+				best = !a.decorated ? n : best;
+				continue;
+			}
+
+			if (a.def < b.def) {
+				best = n;
+			}
+		}
+
+		return best;
+	};
+
+	//second pass, the same weapon under two item classes (engineer's shotgun vs the all class upgradeable one) has the same name and stats
+	std::unordered_map<std::string, size_t> merged_by_name{};
+	std::vector<std::vector<size_t>> merged{};
+
+	for (size_t g{}; g < groups.size(); g++)
+	{
+		const std::string name_key{ lower(pending[pickBase(groups[g])].first.name) + "|" + family_signature[g] };
+
+		auto it{ merged_by_name.find(name_key) };
+
+		if (it == merged_by_name.end()) {
+			it = merged_by_name.emplace(name_key, merged.size()).first;
+			merged.emplace_back();
+		}
+
+		merged[it->second].insert(merged[it->second].end(), groups[g].begin(), groups[g].end());
+	}
+
+	for (std::vector<size_t> &group : merged)
+	{
+		std::sort(group.begin(), group.end(), [&](const size_t a, const size_t b) { return pending[a].first.def < pending[b].first.def; });
+
+		const SkinItem &base{ pending[pickBase(group)].first };
+
+		SkinFamily family{};
+
+		family.base = base.def;
+		family.name = base.name;
+		family.slot = base.slot;
+
+		const int family_index{ static_cast<int>(m_families.size()) };
+
+		//variants named the same as the base get told apart by what they are
+		for (const size_t n : group)
+		{
+			SkinItem item{ pending[n].first };
+
+			if (item.def != base.def && item.name == base.name) {
+				item.name += item.upgradeable ? " (upgradeable)" : std::format(" ({})", item.def);
+			}
+
+			else if (item.def == base.def && item.stock && group.size() > 1) {
+				item.name += " (stock)";
+			}
+
+			item.family = family_index;
+
+			family.classes |= item.classes;
+			family.any_australium |= item.australium;
+			family.any_festivizable |= item.festivizable;
+			family.any_paintkits |= !item.paintkits.empty();
+			family.any_botkiller |= item.botkiller;
+			family.members.push_back(item.def);
+
+			m_item_index[item.def] = m_items.size();
+			m_items.push_back(std::move(item));
+		}
+
+		m_families.push_back(std::move(family));
+	}
+
+	//fix the family names up after the members got their suffixes
+	for (SkinFamily &family : m_families)
+	{
+		if (const char *const name{ weaponName(family.base) }) {
+			family.name = std::string{ name }.starts_with("The ") ? std::string{ name }.substr(4) : name;
+		}
+	}
+
+	std::sort(m_families.begin(), m_families.end(), [](const SkinFamily &a, const SkinFamily &b) { return a.name < b.name; });
+
+	//sorting moved them, point the items back at their family
+	for (int n{}; n < static_cast<int>(m_families.size()); n++)
+	{
+		for (const int def : m_families[n].members) {
+			m_items[m_item_index[def]].family = n;
+		}
+	}
+}
+
+bool SkinCatalog::ensure()
+{
+	void *const schema{ s::GetItemSchema.call<void *>() };
+
+	if (!schema) {
+		return false;
+	}
+
+	const int version{ *reinterpret_cast<int *>(reinterpret_cast<uintptr_t>(schema) + SCHEMA_VERSION_OFFSET) };
+
+	//an empty result means the schema wasn't loaded yet, try again every few seconds
+	static float next_retry{};
+
+	const bool retry{ m_families.empty() && i::global_vars->realtime >= next_retry };
+
+	if (version != m_schema_version || retry)
+	{
+		m_schema_version = version;
+		next_retry = i::global_vars->realtime + 5.0f;
+
+		build(schema);
+	}
+
+	return !m_families.empty();
+}
+
+const SkinItem *SkinCatalog::item(const int def) const
+{
+	const auto it{ m_item_index.find(def) };
+
+	return it == m_item_index.end() ? nullptr : &m_items[it->second];
+}
+
+const SkinFamily *SkinCatalog::familyOf(const int def) const
+{
+	const SkinItem *const found{ item(def) };
+
+	return found ? &m_families[found->family] : nullptr;
+}
+
+const SkinFamily *SkinCatalog::familyByBase(const int base) const
+{
+	const SkinFamily *const family{ familyOf(base) };
+
+	return family && family->base == base ? family : nullptr;
+}
+
+std::string SkinCatalog::dump() const
+{
+	std::string out{ std::format("{} families, {} items\n\n", m_families.size(), m_items.size()) };
+
+	for (const SkinFamily &family : m_families)
+	{
+		out += std::format("{} (base {}, slot {}, classes 0x{:X}){}{}{}{}\n", family.name, family.base, family.slot, family.classes,
+			family.any_australium ? " [australium]" : "", family.any_festivizable ? " [festivizable]" : "",
+			family.any_paintkits ? " [paintkits]" : "", family.any_botkiller ? " [botkiller]" : "");
+
+		for (const int def : family.members)
+		{
+			const SkinItem *const it{ item(def) };
+
+			if (!it) {
+				continue;
+			}
+
+			out += std::format("    {:>5} {} [{}]{}{}{}{}{}{}{}{} styles {} kits {}\n", it->def, it->name, it->item_class,
+				it->stock ? " stock" : "", it->upgradeable ? " upgradeable" : "", it->festive ? " festive" : "",
+				it->decorated ? " decorated" : "", it->botkiller ? " botkiller" : "", it->festivizable ? " festivizable" : "",
+				it->australium ? " australium" : "", it->stattrak ? " stattrak" : "", it->styles.size(), it->paintkits.size());
+		}
+	}
+
+	return out;
+}

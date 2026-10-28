@@ -30,6 +30,7 @@ namespace tf_utils
 	double Plat_FloatTime();
 	bool isLoopback();
 	CUtlVector<int> *getValidPaintKits(C_TFWeaponBase *const wep);
+	CUtlVector<int> *getValidPaintKits(const int def_index);
 	std::string getPaintKitName(const int kit_id);
 	std::string dumpKeyValues(KeyValues *const kv);
 	float airburstDamageForce(const vec3 &size, float damage, float scale);

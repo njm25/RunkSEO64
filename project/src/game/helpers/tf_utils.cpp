@@ -372,13 +372,18 @@ CUtlVector<int> *tf_utils::getValidPaintKits(C_TFWeaponBase *const wep)
 		return nullptr;
 	}
 
+	return getValidPaintKits(wep->m_iItemDefinitionIndex());
+}
+
+CUtlVector<int> *tf_utils::getValidPaintKits(const int def_index)
+{
 	void *const item_schema{ s::GetItemSchema.call<void *>() };
 
 	if (!item_schema) {
 		return nullptr;
 	}
 
-	void *const item_def{ s::CEconItemSchema_GetItemDefinition.call<void *>(item_schema, wep->m_iItemDefinitionIndex())};
+	void *const item_def{ s::CEconItemSchema_GetItemDefinition.call<void *>(item_schema, def_index)};
 
 	if (!item_def) {
 		return nullptr;
@@ -396,10 +401,14 @@ CUtlVector<int> *tf_utils::getValidPaintKits(C_TFWeaponBase *const wep)
 std::string tf_utils::getPaintKitName(const int kit_id)
 {
 	static std::unordered_map<int, std::string> paint_kit_names{};
+	static bool loaded{};
 
-	if (paint_kit_names.empty()) 
+	//one attempt, a missing file doesn't get reloaded on every lookup
+	if (!loaded)
 	{
-		KeyValues *const kv{ new KeyValues("lang") };
+		loaded = true;
+
+		static KeyValues *const kv{ new KeyValues("lang") };
 
 		if (!i::file_system->LoadKeyValues(*kv, TYPE_VMT, "resource/tf_proto_obj_defs_english.txt", "GAME")) {
 			return "";

@@ -6,7 +6,7 @@
 
 enum class MenuTab
 {
-	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, PLAYERS, BINDS, STATISTICS, CONFIGS, DIAGNOSTICS
+	AIMBOT, AUTOMATION, EXPLOITS, VISUALS, MISC, SKINS, PLAYERS, BINDS, STATISTICS, CONFIGS, DIAGNOSTICS
 };
 
 enum class AimbotTab
@@ -17,6 +17,11 @@ enum class AimbotTab
 enum class VisualsTab
 {
 	ENTITIES, MAP, OTHER, COLORS, MENU, AWARENESS
+};
+
+enum class StatsTab
+{
+	OVERVIEW, CLASSES, MAPS, WEAPONS
 };
 
 class Menu final : public HasUnload
@@ -33,6 +38,7 @@ private:
 	MenuTab m_tab{ MenuTab::AIMBOT };
 	AimbotTab m_aimbot_tab{ AimbotTab::MAIN };
 	VisualsTab m_visuals_tab{ VisualsTab::ENTITIES };
+	StatsTab m_stats_tab{ StatsTab::OVERVIEW };
 	int m_navigate_frames{}; //tab bars apply a forced selection a frame late, so it's held for a couple of frames
 
 private:
@@ -41,6 +47,8 @@ private:
 	bool m_hovered{};
 	float m_tab_anim{ 1.0f };
 	int m_tab_key{ -1 }; //what's being shown, a change restarts the tab animation
+	float m_sub_tab_anim{ 1.0f }; //same for the page under a sub tab bar, the bar itself stays put
+	int m_sub_tab_key{ -1 };
 
 private:
 	std::string m_search{};
@@ -50,6 +58,10 @@ private:
 	//parent is the main tab a sub tab sits under, for context highlighting
 	template <typename T>
 	void tabItem(const char *const label, T &cur, const T value, const char *const parent = nullptr);
+
+	//around the page a sub tab bar shows, so switching sub tabs only animates the page
+	void beginSubTabPage();
+	void endSubTabPage();
 
 public:
 	void navigate(const MenuTab tab, const int sub_tab = 0);
@@ -80,6 +92,7 @@ private:
 	void pageVisualsAwareness();
 
 	void tabMisc();
+	void tabSkins();
 	void tabPlayers();
 	void tabBinds();
 	void tabStatistics();

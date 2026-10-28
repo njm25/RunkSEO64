@@ -181,6 +181,8 @@
     <ClCompile Include="src\app\features\awareness\awareness.cpp" />
     <ClCompile Include="src\app\features\freecam\freecam.cpp" />
     <ClCompile Include="src\app\features\skin_changer\skin_changer.cpp" />
+    <ClCompile Include="src\app\features\skin_changer\skin_catalog.cpp" />
+    <ClCompile Include="src\app\features\ui\menu_skins.cpp" />
     <ClCompile Include="src\app\features\ui\menu_binds.cpp" />
     <ClCompile Include="src\app\features\ui\menu_search.cpp" />
     <ClCompile Include="src\app\features\ui\tooltips.cpp" />
@@ -391,6 +393,7 @@
     <ClInclude Include="src\app\features\awareness\awareness.hpp" />
     <ClInclude Include="src\app\features\freecam\freecam.hpp" />
     <ClInclude Include="src\app\features\skin_changer\skin_changer.hpp" />
+    <ClInclude Include="src\app\features\skin_changer\skin_catalog.hpp" />
     <ClInclude Include="src\shared\utils\insttracker.hpp" />
     <ClInclude Include="src\utils\inst_tracker.hpp" />
     <ClInclude Include="src\shared\utils\math.hpp" />

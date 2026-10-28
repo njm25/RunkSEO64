@@ -102,6 +102,16 @@ void Anims::postCreateMove()
 		return;
 	}
 
+	//the local player can be recreated mid level (full updates, reconnects), the fake animstate would keep pointing at the freed one
+	if (m_fake_animstate->m_pTFPlayer != local || m_fake_animstate->m_pPlayer != local)
+	{
+		m_fake_animstate->m_pPlayer = m_fake_animstate->m_pTFPlayer = local;
+		m_fake_animstate->ClearAnimationState();
+
+		m_fake_origin = local->m_vecOrigin();
+		m_last_sent_tickbase = local->m_nTickBase();
+	}
+
 	CUserCmd *const latest_cmd{ &i::input->m_pCommands[networking->getLatestCommandNumber() % MULTIPLAYER_BACKUP] };
 	CUserCmd *const last_networked_cmd{ &i::input->m_pCommands[i::client_state->lastoutgoingcommand % MULTIPLAYER_BACKUP] };
 

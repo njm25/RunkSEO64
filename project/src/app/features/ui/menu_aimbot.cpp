@@ -10,6 +10,8 @@ void Menu::tabAimbot()
 		tabItem("main", m_aimbot_tab, AimbotTab::MAIN, "aimbot");
 		tabItem("visuals", m_aimbot_tab, AimbotTab::VISUALS, "aimbot");
 
+		beginSubTabPage();
+
 		if (m_aimbot_tab == AimbotTab::MAIN) {
 			pageAimbotMain();
 		}
@@ -17,6 +19,8 @@ void Menu::tabAimbot()
 		else if (m_aimbot_tab == AimbotTab::VISUALS) {
 			pageAimbotVisuals();
 		}
+
+		endSubTabPage();
 
 		ImGui::EndTabBar();
 	}

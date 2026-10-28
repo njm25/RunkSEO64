@@ -20,6 +20,11 @@ public:
 	std::string fmt{}; //ints & floats
 	std::vector<std::pair<std::string, int>> selects{}; //selectsingle
 	bool appear_in_bindslist{ true };
+
+	//slider range, so values can be edited with the same limits later
+	bool has_range{};
+	float range_min{};
+	float range_max{};
 };
 
 class Binds final : public HasLoad
@@ -36,6 +41,21 @@ public:
 
 public:
 	void add(const Bind bind);
+	void save();
+
+public:
+	//profiles are saved sets of binds, kept next to binds.json
+	std::string profilePath(std::string_view name) const;
+	std::vector<std::string> profiles() const;
+	bool profileExists(std::string_view name) const;
+	void saveProfile(const std::string &name);
+	bool loadProfile(const std::string &name);
+	bool deleteProfile(const std::string &name);
+
+public:
+	std::vector<Bind> &getBinds() { return m_binds; }
+	void removeAt(const size_t index);
+	void move(const size_t from, const size_t to);
 
 private:
 	void remove(Bind *const bind_ptr);

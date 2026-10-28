@@ -202,7 +202,7 @@ MAKE_SIG(C_BaseEntity_ShutdownPredictable, mem::findBytes("client.dll", "40 53 4
 MAKE_SIG(CNetChan_ProcessPacket, mem::findBytes("engine.dll", "44 88 44 24 18 48 89 54 24 10 53"));
 MAKE_SIG(C_TEFireBullets_PostDataUpdate, mem::findBytes("client.dll", "48 83 EC 58 85"));
 MAKE_SIG(C_BaseEntity_GetPredictedFrame, mem::findBytes("client.dll", "48 83 B9 48 07 00 00 00 44"));
-MAKE_SIG(CEconItemSchema_GetAttributeDefinition, mem::findBytes("client.dll", "89 54 24 ? 53 48 83 EC ? 48 8B D9 48 8D 54 24 ? 48 81 C1 ? ? ? ? E8 ? ? ? ? 8B D0 3B 83"));
+MAKE_SIG(CEconItemSchema_GetAttributeDefinition, mem::findBytes("client.dll", "85 D2 78 ? 3B 91 E8 02 00 00 7D ? 48 8B 81 D8 02 00 00 8B D2 48 8B 04 D0 C3")); // the old one matched the quality lookup, this reads the flat attribute array
 MAKE_SIG(CAttributeList_SetRuntimeAttributeValue, mem::findBytes("client.dll", "48 89 5C 24 ? 55 56 57 48 8B EC 48 83 EC 50 44 8B 49 18")); // >>
 MAKE_SIG(C_TFWeaponBaseGun_FireProjectile, mem::findBytes("client.dll", "48 89 74 24 ? 57 48 81 EC ? ? ? ? 48 8B FA 48 89 9C 24"));
 MAKE_SIG(CBaseCombatWeapon_WeaponSound, mem::findBytes("client.dll", "48 8B C4 48 89 70 18 48 89 78 20 55 48 8D 68 C8"));
@@ -223,6 +223,12 @@ MAKE_SIG(C_EconItemView_GetItemName, mem::findBytes("client.dll", "40 53 48 83 E
 MAKE_SIG(CHudCrosshair_GetDrawPosition, mem::findBytes("client.dll", "48 8B C4 55 53 56 41 54 41 55"));
 MAKE_SIG(CreateTFPlayerAnimState, mem::findBytes("client.dll", "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 48 8B 1D ?? ?? ?? ?? 48 8B F1 48 8B CB"));
 MAKE_SIG(C_TFPlayer_OnNewModel, mem::findBytes("client.dll", "48 89 5C 24 10 56 48 83 EC 20 48 8B D9 E8 ?? ?? ?? ?? 48 8B CB"));
+// the imm32 in RecvPropUtlVector("m_hMyWearables", offset, ...) in DT_BasePlayer's recv table setup, our netvar dump gets this utl vector prop wrong
+MAKE_SIG(C_BasePlayer_MyWearablesOffset, mem::findBytes("client.dll", "48 8D 0D ? ? ? ? 41 B8 ? ? ? ? 44 8D 4E 04 48 8D 15 ? ? ? ? 0F 10 00").offset(9));
+// the client's map name -> entity factory table, every registration calls it first (tf_wearable's is the first match)
+MAKE_SIG(GetClassMap, mem::findBytes("client.dll", "48 83 EC 38 E8 ? ? ? ? 48 8D 0D ? ? ? ? 41 B9 E0 0E 00 00").offset(4).fixRip());
+MAKE_SIG(C_BaseEntity_FollowEntity, mem::findBytes("client.dll", "48 89 5C 24 08 57 48 83 EC 20 41 0F B6 F8 48 8B D9 48 85 D2 74 ? 45 33 C0 E8 ? ? ? ? 45 33 C0 33 D2 48 8B CB E8 ? ? ? ? 40 84 FF")); // (this, parent, bBoneMerge)
+MAKE_SIG(C_BaseEntity_Remove,mem::findBytes("client.dll", "40 53 48 83 EC 20 80 B9 ? ? ? ? 00 48 8B D9 75 ? 48 8B 01 FF 90 ? ? ? ? 84 C0 74 ? 48 8D 8B"));
 MAKE_SIG(CHLClient_LevelInitPreEntity, mem::findBytes("client.dll", "40 53 48 83 EC 20 48 8B DA E8 ? ? ? ? 80 3D ? ? ? ? ?"));
 MAKE_SIG(R_LoadNamedSkys, mem::findBytes("engine.dll", "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 81 EC ? ? ? ? 48 8D 05"));
 MAKE_SIG(CTFGCClientSystem_PreInitGC, mem::findBytes("client.dll", "40 53 48 83 EC ? 80 B9 ? ? ? ? ? 48 8B D9 0F 85 ? ? ? ? 4C 8D 0D"));

@@ -29,9 +29,13 @@
 #include "features/auto_reflect/auto_reflect.hpp"
 
 #include "features/ui/ui.hpp"
+#include "features/statistics/statistics.hpp"
 #include "features/ui/menu.hpp"
 #include "features/ui/binds.hpp"
 #include "features/ui/minimap.hpp"
+#include "features/awareness/awareness.hpp"
+#include "features/freecam/freecam.hpp"
+#include "features/skin_changer/skin_changer.hpp"
 
 #include "features/cfg.hpp"
 
@@ -71,6 +75,7 @@ MAKE_HOOK(
 			tick_base->paint();
 			seed_pred->paint();
 			anti_aim->paint();
+			awareness->paint();
 		}
 		draw->end();
 	}
@@ -116,6 +121,11 @@ MAKE_HOOK(
 			break;
 		}
 
+		case FRAME_NET_UPDATE_POSTDATAUPDATE_START: {
+			skin_changer->apply();
+			break;
+		}
+
 		default: {
 			break;
 		}
@@ -136,6 +146,7 @@ MAKE_HOOK(
 		case FRAME_RENDER_START: {
 			mat_mod->run();
 			mini_map->cache();
+			skin_changer->run();
 			break;
 		}
 
@@ -334,6 +345,17 @@ MAKE_HOOK(
 	void,
 	void *rcx, CViewSetup *pSetup)
 {
+	//dead with freecam on: the game sets up its death cam, then freecam moves it
+	if (C_TFPlayer *const local{ ec->getLocal() }; pSetup && cfg::freecam_active && local && local->deadflag())
+	{
+		CALL_ORIGINAL(rcx, pSetup);
+		freecam->overrideView(pSetup);
+		return;
+	}
+
+	//not flying, the next death starts from the death cam again
+	freecam->overrideView(nullptr);
+
 	if (cfg::tp_override_active && pSetup)
 	{
 		if (C_TFPlayer *const local{ ec->getLocal() })
@@ -588,6 +610,7 @@ MAKE_HOOK(
 		misc->paintPredPath();
 		misc->paintSniperSightlines();
 		misc->paintSitckyMesh();
+		awareness->render();
 		//misc->paintViewVelocity();
 		entity_visuals->runModels();
 		player_data->visual();
@@ -1045,7 +1068,7 @@ MAKE_HOOK(
 	{
 		const uintptr_t gc_client_system{ s::GTFGCClientSystem.call<uintptr_t>() };
 
-		if (!gc_client_system) {
+		if (!gc_client_system || !s::CMsgSurveyRequest_match_id_Offset) {
 			return;
 		}
 
@@ -1076,7 +1099,7 @@ MAKE_HOOK(
 		s::CMatchInviteNotification_AcceptMatch.call<void>(rcx);
 	}
 
-	if (cfg::misc_remove_autojoin_countdown)
+	if (cfg::misc_remove_autojoin_countdown && s::CMatchInviteNotification_Flags_Offset)
 	{
 		const uintptr_t notification{ reinterpret_cast<uintptr_t>(rcx) };
 		const int32_t offset{ *s::CMatchInviteNotification_Flags_Offset.cast<int32_t *>() };
@@ -2116,7 +2139,7 @@ MAKE_HOOK(
 	char,
 	void *rcx)
 {
-	if (rcx && cfg::misc_bypass_f2p_chat) {
+	if (rcx && cfg::misc_bypass_f2p_chat && s::GTFGCClientSystem_NonPremiumAccount_Offset) {
 		const int32_t offset{ *s::GTFGCClientSystem_NonPremiumAccount_Offset.cast<int32_t *>() };
 		*reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(rcx) + offset) = 0;
 	}
@@ -2402,6 +2425,7 @@ MAKE_HOOK(
 	IDirect3DDevice9 *rcx, D3DPRESENT_PARAMETERS *pPresentationParameters)
 {
 	ImGui_ImplDX9_InvalidateDeviceObjects();
+	ui->releaseDeviceObjects();
 
 	const HRESULT result{ CALL_ORIGINAL(rcx, pPresentationParameters) };
 
@@ -2423,6 +2447,8 @@ MAKE_HOOK(
 	}
 
 	input_dx->processStart();
+
+	statistics->run();
 
 	ui->start();
 	{

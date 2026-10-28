@@ -476,6 +476,7 @@ void MiniMap::run()
 		paint();
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			keepOnScreen(cfg::ui_pos_minimap_x, cfg::ui_pos_minimap_y, ImGui::GetWindowSize());
 			ImGui::SetWindowPos({ cfg::ui_pos_minimap_x, cfg::ui_pos_minimap_y });
 		}
 

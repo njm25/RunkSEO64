@@ -311,6 +311,32 @@ MAKE_CFGVAR(spectator_list_show_respawn_time, true);
 MAKE_CFGVAR(spectator_list_override_firstperson, true);
 MAKE_CFGVAR(spectator_list_firstperson_clr, Color(255, 255, 0, 255));
 
+MAKE_CFGVAR(callouts_active, false);
+MAKE_CFGVAR(callouts_color, Color(255, 200, 60, 255));
+
+MAKE_CFGVAR(respawn_timers_active, false);
+MAKE_CFGVAR(respawn_timers_teammates, false);
+MAKE_CFGVAR(respawn_timers_pos, 0.35f);
+
+MAKE_CFGVAR(pack_timers_active, false);
+
+MAKE_CFGVAR(sentry_ranges_active, false);
+MAKE_CFGVAR(sentry_ranges_only_near, true);
+MAKE_CFGVAR(sentry_warning, true);
+
+MAKE_CFGVAR(sticky_zones_active, false);
+MAKE_CFGVAR(sticky_warning, true);
+
+MAKE_CFGVAR(sniper_warning, false);
+
+MAKE_CFGVAR(freecam_active, false);
+MAKE_CFGVAR(freecam_speed, 600.0f);
+
+MAKE_CFGVAR(skins_active, false);
+MAKE_CFGVAR(skins_apply_delay, 0.4f); //seconds a setting has to sit still before the weapons get rebuilt
+MAKE_CFGVAR(skins_overrides, std::string("")); //json, per weapon family: { "#<base def>": { ... } }, edited from the skins tab
+MAKE_CFGVAR(skins_player, std::string("")); //json, per class: { "scout": { "enabled", "slots": [ 3 cosmetics ] } }, edited from skins > player
+
 MAKE_CFGVAR(tracers_active, true);
 MAKE_CFGVAR(tracers_type, 0); // 0 = beams, 1+ = particle type
 MAKE_CFGVAR(tracers_mode, 0); // 0 = use color, 1 = rainbow
@@ -408,9 +434,44 @@ MAKE_CFGVAR(notifs_fade_out_time, 0.5f);
 #pragma region ui	
 
 MAKE_CFGVAR(ui_color_base, Color({ 100, 100, 100, 255 }));
+MAKE_CFGVAR(ui_accent_custom, false);
+MAKE_CFGVAR(ui_color_accent, Color({ 230, 70, 80, 255 }));
+MAKE_CFGVAR(ui_rounding, 0.0f);
+MAKE_CFGVAR(ui_border_size, 1.0f);
+MAKE_CFGVAR(ui_padding, 4.0f);
+MAKE_CFGVAR(ui_bg_style, 0); // (0 = solid) (1 = gradient) (2 = image)
+MAKE_CFGVAR(ui_color_bg_gradient, Color({ 10, 10, 30, 255 }));
+MAKE_CFGVAR(ui_bg_gradient_dir, 0); // (0 = top to bottom) (1 = left to right)
+MAKE_CFGVAR(ui_bg_image, std::string("")); //path to a png, jpg, bmp or tga
+MAKE_CFGVAR(ui_bg_image_opacity, 0.3f);
+MAKE_CFGVAR(ui_bg_image_fit, 0); // (0 = cover) (1 = stretch)
+MAKE_CFGVAR(ui_scale, 1.0f);
+MAKE_CFGVAR(ui_scroll_edit, true);
+MAKE_CFGVAR(ui_tooltip_details, true);
+MAKE_CFGVAR(ui_slider_buttons, true);
+MAKE_CFGVAR(ui_bg_opacity, 1.0f);
+MAKE_CFGVAR(ui_fade_unhovered, false);
+MAKE_CFGVAR(ui_fade_opacity, 0.5f);
+MAKE_CFGVAR(ui_animations, true);
+MAKE_CFGVAR(ui_sounds, false);
+MAKE_CFGVAR(ui_sound_volume, 0.5f);
+MAKE_CFGVAR(ui_context_highlight, true);
+MAKE_CFGVAR(ui_connection_info, true);
+
+MAKE_CFGVAR(ui_font, std::string("tahoma.ttf")); //file in a fonts folder, or a full path
+MAKE_CFGVAR(ui_font_size, 13);
+MAKE_CFGVAR(ui_font_smoothing, 0); // (0 = sharp) (1 = smooth) (2 = smooth, light hinting)
+MAKE_CFGVAR(ui_font_bold, false);
+MAKE_CFGVAR(ui_font_italic, false);
+MAKE_CFGVAR(ui_font_letter_spacing, 0.0f);
+MAKE_CFGVAR(ui_font_row_spacing, 0.0f);
 
 MAKE_CFGVAR(ui_pos_menu_x, 400.0f);
 MAKE_CFGVAR(ui_pos_menu_y, 200.0f);
+
+//unscaled, so the menu grows with the ui scale
+MAKE_CFGVAR(ui_menu_w, 600.0f);
+MAKE_CFGVAR(ui_menu_h, 500.0f);
 
 MAKE_CFGVAR(ui_pos_binds_x, 20.0f);
 MAKE_CFGVAR(ui_pos_binds_y, 300.0f);

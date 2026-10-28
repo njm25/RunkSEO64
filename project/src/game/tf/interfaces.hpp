@@ -2,6 +2,9 @@
 
 #include "entities.hpp"
 
+#include <cstdarg>
+#include <cstdio>
+
 class IBaseClientDLL
 {
 public:
@@ -70,7 +73,15 @@ public:
 
 	void ConsoleColorPrintf(const Color &clr, const char *pFormat, ...)
 	{
-		mem::callVirtual<23, ConVar *, const Color &, const char *>(this, clr, pFormat);
+		//the varargs can't be forwarded through callVirtual, format here and hand the game a plain string
+		char buf[1024]{};
+
+		va_list args;
+		va_start(args, pFormat);
+		vsnprintf(buf, sizeof(buf), pFormat, args);
+		va_end(args);
+
+		mem::callVirtual<23, ConVar *, const Color &, const char *, const char *>(this, clr, "%s", buf);
 	}
 };
 
@@ -342,6 +353,22 @@ public:
 class IVModelInfo
 {
 public:
+	const model_t *GetModel(int modelindex)
+	{
+		return mem::callVirtual<1, const model_t *, int>(this, modelindex);
+	}
+
+	//gives a model the server never precached an index of its own, GetModelIndex finds it after (the game does this for item models)
+	int RegisterDynamicModel(const char *name, bool client_side)
+	{
+		return mem::callVirtual<52, int, const char *, bool>(this, name, client_side);
+	}
+
+	bool IsDynamicModelLoading(int modelindex)
+	{
+		return mem::callVirtual<53, bool, int>(this, modelindex);
+	}
+
 	int GetModelIndex(const char *name)
 	{
 		return mem::callVirtual<2, int, const char *>(this, name);
@@ -1062,10 +1089,20 @@ public:
 	};
 };
 
-MAKE_IFACE(IBaseClientDLL, client, mem::findInterface("client.dll", "VClient017"));
+//vgui's string table, everything the game has loaded from resource/*_english.txt (and the player's language)
+class ILocalize {
+public:
+	//"#Token" or "Token", nullptr when there's no such token
+	const wchar_t *Find(const char *token) {
+		return mem::callVirtual<2, const wchar_t *, const char *>(this, token);
+	};
+};
+
+MAKE_IFACE(IBaseClientDLL,client, mem::findInterface("client.dll", "VClient017"));
 MAKE_IFACE(IClientEntityList, ent_list, mem::findInterface("client.dll", "VClientEntityList003"));
 MAKE_IFACE(ICvar, cvar, mem::findInterface("vstdlib.dll", "VEngineCvar004"));
-MAKE_IFACE(IVEngineClient, engine, mem::findInterface("engine.dll", "VEngineClient014"));
+MAKE_IFACE(ILocalize, localize, mem::findInterface("vgui2.dll", "VGUI_Localize005"));
+MAKE_IFACE(IVEngineClient, engine,mem::findInterface("engine.dll", "VEngineClient014"));
 MAKE_IFACE(IEngineTrace, trace, mem::findInterface("engine.dll", "EngineTraceClient003"));
 MAKE_IFACE(IEngineVGui, vgui, mem::findInterface("engine.dll", "VEngineVGui002"));
 MAKE_IFACE(IGameMovement, game_movement, mem::findInterface("client.dll", "GameMovement001"));

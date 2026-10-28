@@ -2515,6 +2515,21 @@ public:
 		TOTAL
 	};
 
+	const char *GetName()
+	{
+		return mem::callVirtual<0, const char *>(this);
+	}
+
+	const char *GetAddress()
+	{
+		return mem::callVirtual<1, const char *>(this);
+	}
+
+	float GetTimeConnected()
+	{
+		return mem::callVirtual<3, float>(this);
+	}
+
 	bool IsLoopback()
 	{
 		return mem::callVirtual<6, bool>(this);
@@ -2533,6 +2548,21 @@ public:
 	float GetAvgLatency(int flow)
 	{
 		return mem::callVirtual<10, float, int>(this, flow);
+	}
+
+	float GetAvgLoss(int flow)
+	{
+		return mem::callVirtual<11, float, int>(this, flow);
+	}
+
+	float GetAvgChoke(int flow)
+	{
+		return mem::callVirtual<12, float, int>(this, flow);
+	}
+
+	float GetAvgData(int flow)
+	{
+		return mem::callVirtual<13, float, int>(this, flow);
 	}
 
 	bool CanPacket()
@@ -8042,6 +8072,10 @@ namespace attributes {
 	constexpr uint16_t killstreak_tier = 2025;
 	constexpr uint16_t killstreak_effect = 2013;
 	constexpr uint16_t killstreak_idleeffect = 2014;
+	constexpr uint16_t set_item_tint_rgb = 142; //paint, the only colour of a plain paint can, red for team paints
+	constexpr uint16_t set_item_tint_rgb_2 = 261; //team paints' blu colour
+	constexpr uint16_t kill_eater = 214;
+	constexpr uint16_t kill_eater_score_type = 292;
 	constexpr uint16_t halloween_pumpkin_explosions = 1007;
 	constexpr uint16_t halloween_green_flames = 1008;
 	constexpr uint16_t halloween_voice_modulation = 1006;

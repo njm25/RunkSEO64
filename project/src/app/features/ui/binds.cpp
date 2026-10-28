@@ -1,6 +1,8 @@
 #include "binds.hpp"
 #include "ui.hpp"
 
+#include "../notifs/notifs.hpp"
+
 #include "../cfg.hpp"
 
 void Binds::save(const std::string &path)
@@ -36,6 +38,10 @@ void Binds::save(const std::string &path)
 		}
 
         b["appear_in_bindslist"] = bind.appear_in_bindslist;
+
+		if (bind.has_range) {
+			b["range"] = { bind.range_min, bind.range_max };
+		}
 
 		if (!bind.selects.empty())
 		{
@@ -140,6 +146,13 @@ void Binds::load(const std::string &path)
 		
         bind.appear_in_bindslist = b["appear_in_bindslist"].get<bool>();
 
+		//binds saved before ranges were stored just don't have one
+		if (b.contains("range") && b["range"].size() == 2) {
+			bind.has_range = true;
+			bind.range_min = b["range"][0].get<float>();
+			bind.range_max = b["range"][1].get<float>();
+		}
+
 		m_binds.push_back(bind);
 	}
 }
@@ -155,7 +168,126 @@ void Binds::add(const Bind bind)
 {
 	m_binds.push_back(bind);
 
+	save();
+}
+
+void Binds::save()
+{
 	save(utils::getFilePath() + "binds.json");
+}
+
+static std::filesystem::path profileDir()
+{
+	const std::filesystem::path path{ std::filesystem::path{ utils::getFilePath() } / "binds" };
+
+	if (!std::filesystem::exists(path)) {
+		std::filesystem::create_directories(path);
+	}
+
+	return path;
+}
+
+std::string Binds::profilePath(std::string_view name) const
+{
+	return (profileDir() / std::format("{}.json", name)).string();
+}
+
+std::vector<std::string> Binds::profiles() const
+{
+	std::vector<std::string> names{};
+
+	for (const std::filesystem::directory_entry &file : std::filesystem::directory_iterator{ profileDir() })
+	{
+		if (file.path().extension() == ".json") {
+			names.push_back(file.path().stem().string());
+		}
+	}
+
+	std::sort(names.begin(), names.end());
+
+	return names;
+}
+
+bool Binds::profileExists(std::string_view name) const
+{
+	return std::filesystem::exists(profilePath(name));
+}
+
+void Binds::saveProfile(const std::string &name)
+{
+	save(profilePath(name));
+
+	notifs->message(std::format("saved bind profile '{}'", name));
+}
+
+bool Binds::loadProfile(const std::string &name)
+{
+	if (!profileExists(name)) {
+		notifs->warning(std::format("bind profile '{}' doesn't exist", name));
+		return false;
+	}
+
+	const std::vector<Bind> backup{ m_binds };
+
+	m_binds.clear();
+
+	//a broken file leaves the current binds as they were
+	try {
+		load(profilePath(name));
+	}
+
+	catch (const std::exception &e)
+	{
+		m_binds = backup;
+		notifs->warning(std::format("failed to load bind profile '{}' ({})", name, e.what()));
+
+		return false;
+	}
+
+	save();
+
+	notifs->message(std::format("loaded bind profile '{}'", name));
+
+	return true;
+}
+
+bool Binds::deleteProfile(const std::string &name)
+{
+	std::error_code ec{};
+
+	if (!std::filesystem::remove(profilePath(name), ec)) {
+		notifs->warning(std::format("failed to delete bind profile '{}'", name));
+		return false;
+	}
+
+	notifs->message(std::format("deleted bind profile '{}'", name));
+
+	return true;
+}
+
+void Binds::removeAt(const size_t index)
+{
+	if (index >= m_binds.size()) {
+		return;
+	}
+
+	m_binds.erase(m_binds.begin() + index);
+
+	save();
+}
+
+void Binds::move(const size_t from, const size_t to)
+{
+	if (from >= m_binds.size() || to >= m_binds.size() || from == to) {
+		return;
+	}
+
+	const Bind bind{ m_binds[from] };
+
+	m_binds.erase(m_binds.begin() + from);
+	m_binds.insert(m_binds.begin() + to, bind);
+
+	save();
 }
 
 void Binds::remove(Bind *const bind_ptr)
@@ -361,7 +493,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("key", ImVec2{ 30.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("key", ImVec2{ scaled(30.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				ImGui::Text(utils::keyToStr(bind.key).c_str());
 			}
@@ -369,7 +501,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("type", ImVec2{ 40.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("type", ImVec2{ scaled(40.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				ImGui::Text(bind.type == BindType::TOGGLE ? "toggle" : "hold");
 			}
@@ -377,7 +509,7 @@ void Binds::paint()
 
 			ImGui::SameLine();
 
-			ImGui::BeginChild("value", ImVec2{ ui->isOpen() ? 35.0f : 25.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+			ImGui::BeginChild("value", ImVec2{ scaled(ui->isOpen() ? 35.0f : 25.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 			{
 				if (!bind.selects.empty())
 				{
@@ -419,7 +551,7 @@ void Binds::paint()
 			{
 				ImGui::SameLine();
 
-				ImGui::BeginChild("appear_in_bindslist", ImVec2{ 25.0f, 0.0f }, ImGuiChildFlags_AutoResizeY);
+				ImGui::BeginChild("appear_in_bindslist", ImVec2{ scaled(25.0f), 0.0f }, ImGuiChildFlags_AutoResizeY);
 				{
 					ImGui::Text(bind.appear_in_bindslist ? "true" : "false");
 				}
@@ -436,6 +568,7 @@ void Binds::paint()
 		}
 
 		if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			keepOnScreen(cfg::ui_pos_binds_x, cfg::ui_pos_binds_y, ImGui::GetWindowSize());
 			ImGui::SetWindowPos({ cfg::ui_pos_binds_x, cfg::ui_pos_binds_y });
 		}
 

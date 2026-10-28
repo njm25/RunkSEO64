@@ -1,5 +1,15 @@
 #include "widgets.hpp"
 #include "binds.hpp"
+#include "tooltips.hpp"
+#include "ui.hpp"
+#include "menu_context.hpp"
+
+#include "../notifs/notifs.hpp"
+#include "../diagnostics/diagnostics.hpp"
+#include "../cfg.hpp"
+
+#include <optional>
+#include <type_traits>
 
 enum class WidgetType
 {
@@ -67,7 +77,426 @@ struct WidgetCtxSliderFloat final : public WidgetCtx
 
 //==================================================================================================================================
 
-bool inputKey(int *const var)
+
+struct RegisteredWidget final
+{
+	std::string label{};
+	ConfigVar *var{};
+};
+
+struct RegisteredSection final
+{
+	std::string key{};
+	std::string id{};
+	std::string title{};
+	std::string path{}; //tab names leading to the section, e.g. "aimbot > main"
+	std::vector<RegisteredWidget> widgets{};
+};
+
+//deque so pointers stay valid as sections get added
+static std::deque<RegisteredSection> registered_sections{};
+static RegisteredSection *cur_section{};
+static std::string cur_page{};
+static std::string cur_path{};
+
+static WidgetMode mode{ WidgetMode::DRAW };
+static std::vector<std::string> search_tokens{};
+static bool search_show_all{}; //section itself matched, so every widget in it is shown
+static bool search_goto{};
+static int search_results{};
+
+static RegisteredSection *findOrAddSection(const char *const id, const char *const title)
+{
+	const std::string key{ cur_page + "/" + id };
+
+	for (RegisteredSection &sec : registered_sections)
+	{
+		if (sec.key == key) {
+			return &sec;
+		}
+	}
+
+	registered_sections.push_back(RegisteredSection{ key, id, title, cur_path });
+
+	return &registered_sections.back();
+}
+
+//var is null for custom widgets that aren't backed by a cfg var, those are only there to be searchable
+static void registerWidget(const char *const label, ConfigVar *const var)
+{
+	if (!cur_section) {
+		return;
+	}
+
+	for (const RegisteredWidget &w : cur_section->widgets)
+	{
+		if (var ? w.var == var : (!w.var && w.label == label)) {
+			return;
+		}
+	}
+
+	cur_section->widgets.push_back(RegisteredWidget{ label, var });
+}
+
+static ConfigVar *findCfgVar(const void *const ptr)
+{
+	static std::unordered_map<const void *, ConfigVar *> cache{};
+
+	if (cache.empty())
+	{
+		for (ConfigVar *const cfg_var : getInsts<ConfigVar>()) {
+			cache[cfg_var->ptr()] = cfg_var;
+		}
+	}
+
+	const auto it{ cache.find(ptr) };
+
+	return it != cache.end() ? it->second : nullptr;
+}
+
+static std::string toLower(std::string str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+	return str;
+}
+
+//every word of the query has to show up somewhere in the haystack
+static bool matchesSearch(const std::string &haystack)
+{
+	const std::string lower{ toLower(haystack) };
+
+	for (const std::string &token : search_tokens)
+	{
+		if (lower.find(token) == std::string::npos) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static std::string widgetHaystack(const RegisteredSection *const sec, const std::string &label, const ConfigVar *const var)
+{
+	std::string str{ label };
+
+	if (sec) {
+		str += " " + sec->path + " " + sec->title;
+	}
+
+	if (var) {
+		str += " " + var->name();
+	}
+
+	return str;
+}
+
+//called at the top of every widget: registers it, and decides whether it gets drawn in the current mode
+static bool widgetVisible(const char *const label, const void *const var)
+{
+	if (mode == WidgetMode::DRAW) {
+		return true;
+	}
+
+	ConfigVar *const cfg_var{ findCfgVar(var) };
+
+	if (mode == WidgetMode::REGISTER) {
+		registerWidget(label, cfg_var);
+		return false;
+	}
+
+	return search_show_all || matchesSearch(widgetHaystack(cur_section, label, cfg_var));
+}
+
+bool customWidget(const char *const label, const void *const var)
+{
+	return widgetVisible(label, var);
+}
+
+ImVec4 highlightColor()
+{
+	return ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+}
+
+static bool sectionHighlighted(const RegisteredSection *const sec)
+{
+	return sec && context_highlight->section(sec->id);
+}
+
+bool pathHighlighted(std::string_view path)
+{
+	if (!context_highlight->active()) {
+		return false;
+	}
+
+	for (const RegisteredSection &sec : registered_sections)
+	{
+		if (sec.path != path && !sec.path.starts_with(std::string{ path } + " >")) {
+			continue;
+		}
+
+		if (sectionHighlighted(&sec)) {
+			return true;
+		}
+
+		for (const RegisteredWidget &w : sec.widgets)
+		{
+			if (w.var && context_highlight->var(w.var->name())) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+//greys a widget out when something it needs failed to load, and colors it when it matters for what you're playing
+class WidgetState final
+{
+private:
+	bool m_disabled{};
+	bool m_highlighted{};
+
+public:
+	explicit WidgetState(const std::vector<const void *> &vars)
+	{
+		if (mode == WidgetMode::REGISTER || vars.empty()) {
+			return;
+		}
+
+		bool all_unavailable{ true };
+
+		for (const void *const var : vars)
+		{
+			const ConfigVar *const cfg_var{ findCfgVar(var) };
+
+			if (!cfg_var || diagnostics->unavailableReason(cfg_var).empty()) {
+				all_unavailable = false;
+			}
+
+			if (cfg_var && context_highlight->var(cfg_var->name())) {
+				m_highlighted = true;
+			}
+		}
+
+		m_disabled = all_unavailable;
+
+		if (m_disabled) {
+			ImGui::BeginDisabled();
+		}
+
+		else if (m_highlighted) {
+			ImGui::PushStyleColor(ImGuiCol_Text, highlightColor());
+		}
+	}
+
+	explicit WidgetState(const void *const var) : WidgetState(std::vector<const void *>{ var }) {}
+
+	~WidgetState()
+	{
+		if (m_disabled) {
+			ImGui::EndDisabled();
+		}
+
+		else if (m_highlighted) {
+			ImGui::PopStyleColor();
+		}
+	}
+
+	WidgetState(const WidgetState &) = delete;
+	WidgetState &operator=(const WidgetState &) = delete;
+};
+
+void setWidgetMode(const WidgetMode new_mode)
+{
+	mode = new_mode;
+
+	if (mode == WidgetMode::SEARCH) {
+		search_results = 0;
+		search_goto = false;
+	}
+}
+
+WidgetMode widgetMode()
+{
+	return mode;
+}
+
+void setSearchQuery(std::string_view query)
+{
+	search_tokens.clear();
+
+	std::string token{};
+
+	for (const char c : toLower(std::string{ query }) + " ")
+	{
+		if (c != ' ') {
+			token += c;
+			continue;
+		}
+
+		if (!token.empty()) {
+			search_tokens.push_back(token);
+			token.clear();
+		}
+	}
+}
+
+void setSearchPath(std::string_view path)
+{
+	cur_path = path;
+}
+
+bool searchGotoClicked()
+{
+	return std::exchange(search_goto, false);
+}
+
+int searchResultCount()
+{
+	return search_results;
+}
+
+//==================================================================================================================================
+
+static std::string confirm_msg{};
+static std::function<void()> confirm_fn{};
+static bool confirm_open{};
+
+void confirm(std::string_view msg, const std::function<void()> &on_confirm)
+{
+	confirm_msg = msg;
+	confirm_fn = on_confirm;
+	confirm_open = true;
+}
+
+void drawConfirm()
+{
+	if (confirm_open) {
+		ImGui::OpenPopup("##confirm");
+		confirm_open = false;
+	}
+
+	if (ImGui::BeginPopupModal("##confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove))
+	{
+		//keys only count once the prompt is up, so the enter that opened it doesn't also confirm it
+		const bool keys{ !ImGui::IsWindowAppearing() };
+
+		ImGui::TextUnformatted(confirm_msg.c_str());
+
+		ImGui::Separator();
+
+		const float w{ ImGui::CalcTextSize("cancel").x + ImGui::GetStyle().FramePadding.x * 6.0f };
+
+		if (ImGui::Button("yes", { w, 0.0f }) || (keys && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))))
+		{
+			if (confirm_fn) {
+				confirm_fn();
+			}
+
+			confirm_fn = nullptr;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("cancel", { w, 0.0f }) || (keys && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+			confirm_fn = nullptr;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+//==================================================================================================================================
+
+static std::any currentValue(const ConfigVar *const var)
+{
+	const size_t type{ var->hash() };
+
+	if (type == typeid(bool).hash_code()) {
+		return *static_cast<bool *>(var->ptr());
+	}
+
+	else if (type == typeid(int).hash_code()) {
+		return *static_cast<int *>(var->ptr());
+	}
+
+	else if (type == typeid(float).hash_code()) {
+		return *static_cast<float *>(var->ptr());
+	}
+
+	else if (type == typeid(std::string).hash_code()) {
+		return *static_cast<std::string *>(var->ptr());
+	}
+
+	else if (type == typeid(Color).hash_code()) {
+		return *static_cast<Color *>(var->ptr());
+	}
+
+	return {};
+}
+
+static std::string formatValue(const ConfigVar *const var, const std::any &val, const WidgetCtx *const ctx)
+{
+	const size_t type{ var->hash() };
+
+	if (type == typeid(bool).hash_code()) {
+		return std::any_cast<bool>(val) ? "on" : "off";
+	}
+
+	else if (type == typeid(int).hash_code())
+	{
+		const int i{ std::any_cast<int>(val) };
+
+		if (ctx && ctx->m_type == WidgetType::SELECT_SINGLE)
+		{
+			for (const std::pair<std::string, int> &v : static_cast<const WidgetCtxSelectSingle *>(ctx)->m_vars)
+			{
+				if (v.second == i) {
+					return v.first;
+				}
+			}
+		}
+
+		if (ctx && ctx->m_type == WidgetType::SLIDER_INT)
+		{
+			char buf[64]{};
+			snprintf(buf, sizeof(buf), static_cast<const WidgetCtxSliderInt *>(ctx)->m_fmt, i);
+			return buf;
+		}
+
+		return std::to_string(i);
+	}
+
+	else if (type == typeid(float).hash_code())
+	{
+		const float f{ std::any_cast<float>(val) };
+
+		char buf[64]{};
+		snprintf(buf, sizeof(buf), ctx && ctx->m_type == WidgetType::SLIDER_FLOAT ? static_cast<const WidgetCtxSliderFloat *>(ctx)->m_fmt : "%.2f", f);
+		return buf;
+	}
+
+	else if (type == typeid(std::string).hash_code())
+	{
+		const std::string str{ std::any_cast<std::string>(val) };
+		return str.empty() ? "empty" : std::format("'{}'", str);
+	}
+
+	else if (type == typeid(Color).hash_code())
+	{
+		const Color clr{ std::any_cast<Color>(val) };
+		return std::format("{}, {}, {}, {}", clr.r, clr.g, clr.b, clr.a);
+	}
+
+	return {};
+}
+
+//==================================================================================================================================
+
+bool inputKey(int *const var, const bool start_listening)
 {
 	if (!var) {
 		return false;
@@ -75,7 +504,11 @@ bool inputKey(int *const var)
 
 	bool callback{};
 
-	static bool active{};
+	//listening state lives in imgui's storage so several key inputs can be on screen at once
+	ImGuiStorage *const storage{ ImGui::GetStateStorage() };
+	const ImGuiID state_id{ ImGui::GetID("##input_key_listening") };
+
+	bool active{ start_listening || storage->GetBool(state_id) };
 
 	if (!active)
 	{
@@ -134,6 +567,8 @@ bool inputKey(int *const var)
 		}
 	}
 
+	storage->SetBool(state_id, active);
+
 	return callback;
 }
 
@@ -149,203 +584,229 @@ static int resizeCallback(ImGuiInputTextCallbackData *data)
 	return 0;
 }
 
-void bindWidget(void *const var, WidgetCtx *const ctx)
+ImVec4 warningColor()
 {
-	if (!var || !ctx) {
-		return;
+	const Color clr{ cfg::color_notifs_style_warning };
+
+	return { clr.r / 255.0f, clr.g / 255.0f, clr.b / 255.0f, 1.0f };
+}
+
+bool editBindType(const char *const id, BindType *const type)
+{
+	bool changed{};
+
+	if (ImGui::BeginCombo(id, *type == BindType::TOGGLE ? "toggle" : "hold"))
+	{
+		if (ImGui::Selectable("toggle", *type == BindType::TOGGLE)) {
+			*type = BindType::TOGGLE;
+			changed = true;
+		}
+
+		if (ImGui::Selectable("hold", *type == BindType::HOLD)) {
+			*type = BindType::HOLD;
+			changed = true;
+		}
+
+		ImGui::EndCombo();
 	}
 
-	auto findCfgVar = [var]() -> ConfigVar *const
+	return changed;
+}
+
+bool editBindValue(const char *const id, const Bind &bind, std::any *const val)
+{
+	if (!bind.var || !val) {
+		return false;
+	}
+
+	bool changed{};
+
+	const size_t type{ bind.var->hash() };
+
+	ImGui::PushID(id);
+
+	if (type == typeid(bool).hash_code())
 	{
-		for (ConfigVar *const cfg_var : getInsts<ConfigVar>())
+		const bool cur{ std::any_cast<bool>(*val) };
+
+		if (ImGui::BeginCombo("##value", cur ? "true" : "false"))
 		{
-			if (cfg_var->ptr() != var) {
-				continue;
+			for (const bool option : { false, true })
+			{
+				if (ImGui::Selectable(option ? "true" : "false", cur == option)) {
+					*val = option;
+					changed = true;
+				}
 			}
 
-			return cfg_var;
+			ImGui::EndCombo();
 		}
-
-		return nullptr;
-	};
-
-	ConfigVar *const cfg_var{ findCfgVar() };
-
-	if (!cfg_var) {
-		return;
-	}
-	
-	ImGui::PushID(var);
-
-	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		ImGui::OpenPopup("bind_popup_context");
 	}
 
-	bool open_bind{};
-
-	if (ImGui::BeginPopup("bind_popup_context"))
+	else if (type == typeid(int).hash_code() && !bind.selects.empty())
 	{
-		ImGui::Text(cfg_var->name().c_str());
+		const int cur{ std::any_cast<int>(*val) };
 
-		ImGui::Separator();
+		const char *preview{ "" };
 
-		if (ImGui::MenuItem("bind")) {
-			open_bind = true;
+		for (const std::pair<std::string, int> &select : bind.selects)
+		{
+			if (select.second == cur) {
+				preview = select.first.c_str();
+			}
 		}
 
-		ImGui::EndPopup();
+		if (ImGui::BeginCombo("##value", preview))
+		{
+			for (const std::pair<std::string, int> &select : bind.selects)
+			{
+				if (ImGui::Selectable(select.first.c_str(), select.second == cur)) {
+					*val = select.second;
+					changed = true;
+				}
+			}
+
+			ImGui::EndCombo();
+		}
 	}
 
+	//sliders update the value live but only count as changed once let go, so the binds file isn't written every frame of a drag
+	else if (type == typeid(int).hash_code())
+	{
+		int cur{ std::any_cast<int>(*val) };
+
+		const char *const fmt{ bind.fmt.empty() ? "%d" : bind.fmt.c_str() };
+
+		const bool edited{ bind.has_range
+			? ImGui::SliderInt("##value", &cur, static_cast<int>(bind.range_min), static_cast<int>(bind.range_max), fmt, ImGuiSliderFlags_AlwaysClamp)
+			: ImGui::DragInt("##value", &cur, 0.1f, 0, 0, fmt) };
+
+		if (edited) {
+			*val = cur;
+		}
+
+		changed = ImGui::IsItemDeactivatedAfterEdit();
+	}
+
+	else if (type == typeid(float).hash_code())
+	{
+		float cur{ std::any_cast<float>(*val) };
+
+		const char *const fmt{ bind.fmt.empty() ? "%.2f" : bind.fmt.c_str() };
+
+		const bool edited{ bind.has_range
+			? ImGui::SliderFloat("##value", &cur, bind.range_min, bind.range_max, fmt, ImGuiSliderFlags_AlwaysClamp)
+			: ImGui::DragFloat("##value", &cur, 0.01f, 0.0f, 0.0f, fmt) };
+
+		if (edited) {
+			*val = cur;
+		}
+
+		changed = ImGui::IsItemDeactivatedAfterEdit();
+	}
+
+	ImGui::PopID();
+
+	return changed;
+}
+
+std::string bindKeyUsers(const int key, const Bind *const ignore)
+{
+	std::string users{};
+
+	if (!key) {
+		return users;
+	}
+
+	for (const Bind &bind : binds->getBinds())
+	{
+		if (&bind == ignore || bind.key != key) {
+			continue;
+		}
+
+		if (!users.empty()) {
+			users += ", ";
+		}
+
+		users += bind.name;
+	}
+
+	return users;
+}
+
+static void bindPopup(void *const var, ConfigVar *const cfg_var, WidgetCtx *const ctx, const std::string &name, const std::optional<BindType> open_type)
+{
 	static Bind bind_data{};
 
-	if (open_bind)
+	bool listen{};
+
+	if (open_type)
 	{
 		ImGui::OpenPopup("bind_popup_bind");
 
 		bind_data = Bind{};
 
+		bind_data.name = name;
+		bind_data.type = *open_type;
 		bind_data.val_off = ctx->m_val_off;
 		bind_data.val_on = ctx->m_val_on;
 		bind_data.var = cfg_var;
 		bind_data.cfg_var_name = cfg_var->name();
 		bind_data.appear_in_bindslist = true;
-	}
 
-	if (ImGui::BeginPopup("bind_popup_bind"))
-	{
-		ImGui::Text(std::format("binding {}", cfg_var->name()).c_str());
-
-		ImGui::Separator();
-
-		ImGui::InputTextWithHint("##bind_name", "name", bind_data.name.data(), bind_data.name.capacity() + 1, ImGuiInputTextFlags_CallbackResize, resizeCallback, &bind_data.name);
-
-		inputKey(&bind_data.key);
-
-		if (ImGui::BeginCombo("##bind_type", bind_data.type == BindType::TOGGLE ? "toggle" : "hold"))
-		{
-			if (ImGui::Selectable("toggle", bind_data.type == BindType::TOGGLE)) {
-				bind_data.type = BindType::TOGGLE;
-			}
-
-			if (ImGui::Selectable("hold", bind_data.type == BindType::HOLD)) {
-				bind_data.type = BindType::HOLD;
-			}
-
-			ImGui::EndCombo();
-		}
-
-		if (ctx->m_type == WidgetType::TOGGLE)
-		{
-			if (ImGui::BeginCombo("##val_off", std::any_cast<bool>(bind_data.val_off) ? "true" : "false"))
-			{
-				if (ImGui::Selectable("false", std::any_cast<bool>(bind_data.val_off) == false)) {
-					bind_data.val_off = std::make_any<bool>(false);
-				}
-
-				if (ImGui::Selectable("true", std::any_cast<bool>(bind_data.val_off) == true)) {
-					bind_data.val_off = std::make_any<bool>(true);
-				}
-
-				ImGui::EndCombo();
-			}
-
-			if (ImGui::BeginCombo("##val_on", std::any_cast<bool>(bind_data.val_on) ? "true" : "false"))
-			{
-				if (ImGui::Selectable("false", std::any_cast<bool>(bind_data.val_on) == false)) {
-					bind_data.val_on = std::make_any<bool>(false);
-				}
-
-				if (ImGui::Selectable("true", std::any_cast<bool>(bind_data.val_on) == true)) {
-					bind_data.val_on = std::make_any<bool>(true);
-				}
-
-				ImGui::EndCombo();
-			}
-		}
-
-		else if (ctx->m_type == WidgetType::SELECT_SINGLE)
-		{
-			WidgetCtxSelectSingle *const select{ static_cast<WidgetCtxSelectSingle *>(ctx) };
-
-			auto valToSelect = [&](const int val)
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (v.second != val) {
-						continue;
-					}
-
-					return v;
-				}
-
-				return std::pair<std::string, int>{};
-			};
-
-			const std::pair<std::string, int> cur_off{ valToSelect(std::any_cast<int>(bind_data.val_off)) };
-			const std::pair<std::string, int> cur_on{ valToSelect(std::any_cast<int>(bind_data.val_on)) };
-
-			if (ImGui::BeginCombo("##val_off", cur_off.first.c_str()))
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (ImGui::Selectable(v.first.c_str(), std::any_cast<int>(bind_data.val_off) == v.second)) {
-						bind_data.val_off = std::make_any<int>(v.second);
-					}
-				}
-
-				ImGui::EndCombo();
-			}
-
-			if (ImGui::BeginCombo("##val_on", cur_on.first.c_str()))
-			{
-				for (const std::pair<std::string, int> &v : select->m_vars)
-				{
-					if (ImGui::Selectable(v.first.c_str(), std::any_cast<int>(bind_data.val_on) == v.second)) {
-						bind_data.val_on = std::make_any<int>(v.second);
-					}
-				}
-
-				ImGui::EndCombo();
-			}
+		if (ctx->m_type == WidgetType::SELECT_SINGLE) {
+			bind_data.selects = static_cast<WidgetCtxSelectSingle *>(ctx)->m_vars;
 		}
 
 		else if (ctx->m_type == WidgetType::SLIDER_INT)
 		{
-			WidgetCtxSliderInt *const slider{ static_cast<WidgetCtxSliderInt *>(ctx) };
+			const WidgetCtxSliderInt *const slider{ static_cast<WidgetCtxSliderInt *>(ctx) };
 
-			static int slider_off{};
-			static int slider_on{};
-
-			slider_off = std::any_cast<int>(bind_data.val_off);
-			slider_on = std::any_cast<int>(bind_data.val_on);
-
-			if (ImGui::SliderInt("##val_off", &slider_off, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_off = std::make_any<int>(slider_off);
-			}
-
-			if (ImGui::SliderInt("##val_on", &slider_on, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_on = std::make_any<int>(slider_on);
-			}
+			bind_data.fmt = slider->m_fmt;
+			bind_data.has_range = true;
+			bind_data.range_min = static_cast<float>(slider->m_val_min);
+			bind_data.range_max = static_cast<float>(slider->m_val_max);
 		}
 
 		else if (ctx->m_type == WidgetType::SLIDER_FLOAT)
 		{
-			WidgetCtxSliderFloat *const slider{ static_cast<WidgetCtxSliderFloat *>(ctx) };
+			const WidgetCtxSliderFloat *const slider{ static_cast<WidgetCtxSliderFloat *>(ctx) };
 
-			static float slider_off{};
-			static float slider_on{};
-
-			slider_off = std::any_cast<float>(bind_data.val_off);
-			slider_on = std::any_cast<float>(bind_data.val_on);
-
-			if (ImGui::SliderFloat("##val_off", &slider_off, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_off = std::make_any<float>(slider_off);
-			}
-
-			if (ImGui::SliderFloat("##val_on", &slider_on, slider->m_val_min, slider->m_val_max, slider->m_fmt, ImGuiSliderFlags_AlwaysClamp)) {
-				bind_data.val_on = std::make_any<float>(slider_on);
-			}
+			bind_data.fmt = slider->m_fmt;
+			bind_data.has_range = true;
+			bind_data.range_min = slider->m_val_min;
+			bind_data.range_max = slider->m_val_max;
 		}
+
+		//straight into waiting for a key
+		listen = true;
+	}
+
+	if (ImGui::BeginPopup("bind_popup_bind"))
+	{
+		ImGui::TextUnformatted(std::format("binding {}", cfg_var->name()).c_str());
+
+		ImGui::Separator();
+
+		const float label_w{ ImGui::CalcTextSize("off").x + ImGui::GetStyle().ItemSpacing.x * 2.0f };
+
+		ImGui::InputTextWithHint("##bind_name", "name", bind_data.name.data(), bind_data.name.capacity() + 1, ImGuiInputTextFlags_CallbackResize, resizeCallback, &bind_data.name);
+
+		inputKey(&bind_data.key, listen);
+
+		if (const std::string users{ bindKeyUsers(bind_data.key, nullptr) }; !users.empty()) {
+			ImGui::TextColored(warningColor(), "also bound to: %s", users.c_str());
+		}
+
+		editBindType("##bind_type", &bind_data.type);
+
+		ImGui::TextDisabled("off");
+		ImGui::SameLine(label_w);
+		editBindValue("val_off", bind_data, &bind_data.val_off);
+
+		ImGui::TextDisabled("on");
+		ImGui::SameLine(label_w);
+		editBindValue("val_on", bind_data, &bind_data.val_on);
 
 		ImGui::Separator();
 
@@ -355,7 +816,7 @@ void bindWidget(void *const var, WidgetCtx *const ctx)
 
 		ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2{ 0.0f, 0.5f });
 
-		if (!std::string_view{ bind_data.name.data() }.empty() && bind_data.key != 0)
+		if (!bind_data.name.empty() && bind_data.key != 0)
 		{
 			if (ImGui::Button("save", ImVec2{ ImGui::GetContentRegionAvail().x, 0.0f }))
 			{
@@ -363,19 +824,12 @@ void bindWidget(void *const var, WidgetCtx *const ctx)
 					*static_cast<bool *>(var) = std::any_cast<bool>(bind_data.val_off);
 				}
 
-				else if (ctx->m_type == WidgetType::SELECT_SINGLE) {
+				else if (ctx->m_type == WidgetType::SELECT_SINGLE || ctx->m_type == WidgetType::SLIDER_INT) {
 					*static_cast<int *>(var) = std::any_cast<int>(bind_data.val_off);
-					bind_data.selects = static_cast<WidgetCtxSelectSingle *>(ctx)->m_vars;
-				}
-
-				else if (ctx->m_type == WidgetType::SLIDER_INT) {
-					*static_cast<int *>(var) = std::any_cast<int>(bind_data.val_off);
-					bind_data.fmt = static_cast<WidgetCtxSliderInt *>(ctx)->m_fmt;
 				}
 
 				else if (ctx->m_type == WidgetType::SLIDER_FLOAT) {
 					*static_cast<float *>(var) = std::any_cast<float>(bind_data.val_off);
-					bind_data.fmt = static_cast<WidgetCtxSliderFloat *>(ctx)->m_fmt;
 				}
 
 				binds->add(bind_data);
@@ -395,23 +849,197 @@ void bindWidget(void *const var, WidgetCtx *const ctx)
 
 		ImGui::EndPopup();
 	}
+}
+
+static void widgetContext(const char *const label, void *const var, WidgetCtx *const ctx)
+{
+	if (!var) {
+		return;
+	}
+
+	ConfigVar *const cfg_var{ findCfgVar(var) };
+
+	if (!cfg_var) {
+		return;
+	}
+
+	registerWidget(label, cfg_var);
+
+	const char *const tooltip{ getTooltip(cfg_var->name()) };
+	const bool slider{ ctx && (ctx->m_type == WidgetType::SLIDER_INT || ctx->m_type == WidgetType::SLIDER_FLOAT) };
+	const bool details{ cfg::ui_tooltip_details };
+	const std::string unavailable{ diagnostics->unavailableReason(cfg_var) };
+	const bool relevant{ context_highlight->var(cfg_var->name()) };
+
+	if ((tooltip || slider || details || !unavailable.empty() || relevant) && !ImGui::IsItemActive() && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+	{
+		ImGui::BeginTooltip();
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
+
+		if (!unavailable.empty())
+		{
+			ImGui::TextColored(warningColor(), "unavailable, something it needs failed to load:");
+			ImGui::TextColored(warningColor(), "%s", unavailable.c_str());
+
+			if (tooltip || details) {
+				ImGui::Separator();
+			}
+		}
+
+		else if (relevant) {
+			ImGui::TextColored(highlightColor(), "relevant right now (%s)", context_highlight->describe().c_str());
+		}
+
+		if (tooltip) {
+			ImGui::TextUnformatted(tooltip);
+		}
+
+		if (details)
+		{
+			if (tooltip) {
+				ImGui::Separator();
+			}
+
+			//the default only shows once it's been changed
+			const std::string value{ formatValue(cfg_var, currentValue(cfg_var), ctx) };
+
+			if (cfg_var->isDefault()) {
+				ImGui::Text("value: %s (default)", value.c_str());
+			}
+
+			else {
+				ImGui::Text("value: %s", value.c_str());
+				ImGui::TextDisabled("default: %s", formatValue(cfg_var, cfg_var->defaultValue(), ctx).c_str());
+			}
+
+			for (const Bind &bind : binds->getBinds())
+			{
+				if (bind.var == cfg_var) {
+					ImGui::TextDisabled("bound: %s (%s, %s)", bind.name.c_str(), utils::keyToStr(bind.key).c_str(), bind.type == BindType::TOGGLE ? "toggle" : "hold");
+				}
+			}
+		}
+
+		if (slider) {
+			ImGui::TextDisabled("ctrl+click to type a value");
+		}
+
+		ImGui::PopTextWrapPos();
+		ImGui::EndTooltip();
+	}
+
+	ImGui::PushID(var);
+
+	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		ImGui::OpenPopup("widget_popup_context");
+	}
+
+	std::optional<BindType> open_bind{};
+
+	if (ImGui::BeginPopup("widget_popup_context"))
+	{
+		ImGui::TextUnformatted(cfg_var->name().c_str());
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(std::format("reset to default ({})", formatValue(cfg_var, cfg_var->defaultValue(), ctx)).c_str(), nullptr, false, !cfg_var->isDefault())) {
+			cfg_var->reset();
+		}
+
+		if (ctx)
+		{
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("bind as toggle...")) {
+				open_bind = BindType::TOGGLE;
+			}
+
+			if (ImGui::MenuItem("bind as hold...")) {
+				open_bind = BindType::HOLD;
+			}
+		}
+
+		ImGui::EndPopup();
+	}
+
+	if (ctx)
+	{
+		std::string name{};
+
+		//"melee fov" reads better in the binds list than just "fov"
+		if (open_bind)
+		{
+			name = std::string_view{ label }.substr(0, std::string_view{ label }.find("##"));
+
+			if (cur_section) {
+				name = cur_section->title + " " + name;
+			}
+		}
+
+		bindPopup(var, cfg_var, ctx, name, open_bind);
+	}
 
 	ImGui::PopID();
 }
 
 //==================================================================================================================================
 
+//scrolling over a hovered slider or combo nudges it, returns the notches scrolled (shift for 10x)
+static float wheelNotches()
+{
+	if (!cfg::ui_scroll_edit || mode != WidgetMode::DRAW || ImGui::IsItemActive() || !ImGui::IsItemHovered()) {
+		return 0.0f;
+	}
+
+	//claim the wheel while hovered so the page doesn't scroll along (shift+wheel scrolls sideways)
+	ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+	ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelX);
+
+	const ImGuiIO &io{ ImGui::GetIO() };
+
+	return io.MouseWheel * (io.KeyShift ? 10.0f : 1.0f);
+}
+
+//smallest step the slider's format can show, "%.2f" -> 0.01
+static float formatStep(const char *const fmt, const float min, const float max)
+{
+	if (const char *const dot{ fmt ? strstr(fmt, "%.") : nullptr }; dot && isdigit(static_cast<unsigned char>(dot[2]))) {
+		return std::pow(10.0f, -static_cast<float>(atoi(dot + 2)));
+	}
+
+	return (max - min) / 100.0f;
+}
+
+static float stepValue(const float val, const float delta, const float step, const float min, const float max)
+{
+	//snapping to the step keeps repeated nudges from drifting
+	return std::clamp(std::round((val + delta) / step) * step, min, max);
+}
+
 bool toggle(const char *const label, bool *const var)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
+	const WidgetState state{ var };
+
 	const bool callback{ ImGui::Checkbox(label, var) };
 
-	bindWidget(var, std::make_shared<WidgetCtx>(std::make_any<bool>(false), std::make_any<bool>(true)).get());
+	WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
 
 bool selectSingle(const char *const label, int *const var, std::vector<std::pair<std::string, int>> vars)
 {
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
+	const WidgetState state{ var };
+
 	bool callback{};
 
 	if (ImGui::BeginCombo(label, vars[*var].first.c_str()))
@@ -433,7 +1061,19 @@ bool selectSingle(const char *const label, int *const var, std::vector<std::pair
 		ImGui::EndCombo();
 	}
 
-	bindWidget(var, std::make_shared<WidgetCtxSelectSingle>(vars).get());
+	if (const float notches{ wheelNotches() }; notches != 0.0f)
+	{
+		//scrolling up picks the previous option, like a list
+		const int next{ std::clamp(*var + (notches > 0.0f ? -1 : 1), 0, static_cast<int>(vars.size()) - 1) };
+
+		if (next != *var) {
+			*var = next;
+			callback = true;
+		}
+	}
+
+	WidgetCtxSelectSingle ctx{ vars };
+	widgetContext(label, var, &ctx);
 
 	return callback;
 }
@@ -456,6 +1096,32 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 		}
 	}
 	
+	//items only get drawn while the combo is open, so register them up front
+	bool any_visible{};
+
+	for (const std::pair<std::string, bool *> &var : vars)
+	{
+		const std::string item_label{ std::format("{}: {}", label, var.first) };
+
+		registerWidget(item_label.c_str(), findCfgVar(var.second));
+
+		if (widgetVisible(item_label.c_str(), var.second)) {
+			any_visible = true;
+		}
+	}
+
+	if (!any_visible) {
+		return false;
+	}
+
+	std::vector<const void *> ptrs{};
+
+	for (const std::pair<std::string, bool *> &var : vars) {
+		ptrs.push_back(var.second);
+	}
+
+	const WidgetState state{ ptrs };
+
 	if (ImGui::BeginCombo(label, preview.c_str()))
 	{
 		for (const std::pair<std::string, bool *> &var : vars)
@@ -464,7 +1130,8 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 				*var.second = !*var.second;
 			}
 
-			bindWidget(var.second, std::make_shared<WidgetCtx>(std::make_any<bool>(false), std::make_any<bool>(true)).get());
+			WidgetCtx ctx{ std::make_any<bool>(false), std::make_any<bool>(true) };
+			widgetContext(std::format("{}: {}", label, var.first).c_str(), var.second, &ctx);
 		}
 
 		ImGui::EndCombo();
@@ -473,49 +1140,577 @@ bool selectMulti(const char *const label, const std::vector<std::pair<std::strin
 	return callback;
 }
 
-bool sliderInt(const char *const label, int *const var, int min, int max, const char *const fmt)
+//slider frame, then -/+ buttons, then the label, all in one group so hovering anywhere on the row counts as the widget
+template <typename T>
+static bool sliderRow(const char *const label, T *const var, const T min, const T max, const char *const fmt, WidgetCtx *const ctx)
 {
-	const bool callback{ ImGui::SliderInt(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+	const ImGuiStyle &style{ ImGui::GetStyle() };
+	const ImGuiIO &io{ ImGui::GetIO() };
 
-	bindWidget(var, std::make_shared<WidgetCtxSliderInt>(min, max, fmt).get());
+	const float width{ ImGui::CalcItemWidth() };
+	const float button{ ImGui::GetFrameHeight() };
+	const bool buttons{ cfg::ui_slider_buttons };
+
+	const std::string_view visible{ std::string_view{ label }.substr(0, std::string_view{ label }.find("##")) };
+	const std::string slider_id{ std::format("##{}", label) };
+
+	const float step{ std::is_same_v<T, int> ? 1.0f : formatStep(fmt, static_cast<float>(min), static_cast<float>(max)) };
+
+	auto nudge = [&](const float steps) {
+		*var = static_cast<T>(stepValue(static_cast<float>(*var), steps * step, step, static_cast<float>(min), static_cast<float>(max)));
+	};
+
+	bool callback{};
+
+	ImGui::PushID(label);
+	ImGui::BeginGroup();
+	{
+		ImGui::SetNextItemWidth(buttons ? std::max(width - (button + style.ItemInnerSpacing.x) * 2.0f, button) : width);
+
+		if constexpr (std::is_same_v<T, int>) {
+			callback = ImGui::SliderInt(slider_id.c_str(), var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp);
+		}
+
+		else {
+			callback = ImGui::SliderFloat(slider_id.c_str(), var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp);
+		}
+
+		if (const float notches{ wheelNotches() }; notches != 0.0f) {
+			nudge(notches);
+			callback = true;
+		}
+
+		if (buttons)
+		{
+			//held buttons keep stepping
+			ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+
+			if (ImGui::Button("-", { button, button })) {
+				nudge(io.KeyShift ? -10.0f : -1.0f);
+				callback = true;
+			}
+
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+
+			if (ImGui::Button("+", { button, button })) {
+				nudge(io.KeyShift ? 10.0f : 1.0f);
+				callback = true;
+			}
+
+			ImGui::PopItemFlag();
+		}
+
+		if (!visible.empty()) {
+			ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+			ImGui::TextUnformatted(visible.data(), visible.data() + visible.size());
+		}
+	}
+	ImGui::EndGroup();
+	ImGui::PopID();
+
+	widgetContext(label, var, ctx);
 
 	return callback;
+}
+
+bool sliderInt(const char *const label, int *const var, int min, int max, const char *const fmt)
+{
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
+	const WidgetState state{ var };
+
+	WidgetCtxSliderInt ctx{ min, max, fmt };
+
+	return sliderRow(label, var, min, max, fmt, &ctx);
 }
 
 bool sliderFloat(const char *const label, float *const var, float min, float max, const char *const fmt)
 {
-	const bool callback{ ImGui::SliderFloat(label, var, min, max, fmt, ImGuiSliderFlags_AlwaysClamp) };
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
 
-	bindWidget(var, std::make_shared<WidgetCtxSliderFloat>(min, max, fmt).get());
+	const WidgetState state{ var };
 
-	return callback;
+	WidgetCtxSliderFloat ctx{ min, max, fmt };
+
+	return sliderRow(label, var, min, max, fmt, &ctx);
+}
+
+static ImVec4 colorToVec4(const Color clr)
+{
+	return { clr.r / 255.0f, clr.g / 255.0f, clr.b / 255.0f, clr.a / 255.0f };
+}
+
+static Color vec4ToColor(const ImVec4 &clr)
+{
+	return
+	{
+		static_cast<uint8_t>(clr.x * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.y * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.z * 255.0f + 0.5f),
+		static_cast<uint8_t>(clr.w * 255.0f + 0.5f)
+	};
+}
+
+static bool sameColor(const Color a, const Color b)
+{
+	return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+std::string colorToHex(const Color clr)
+{
+	return std::format("#{:02X}{:02X}{:02X}{:02X}", clr.r, clr.g, clr.b, clr.a);
+}
+
+//"#RRGGBB" or "#RRGGBBAA", the # is optional
+std::optional<Color> colorFromHex(std::string_view hex)
+{
+	while (!hex.empty() && std::isspace(static_cast<unsigned char>(hex.front()))) {
+		hex.remove_prefix(1);
+	}
+
+	while (!hex.empty() && std::isspace(static_cast<unsigned char>(hex.back()))) {
+		hex.remove_suffix(1);
+	}
+
+	if (hex.starts_with("#")) {
+		hex.remove_prefix(1);
+	}
+
+	if ((hex.size() != 6 && hex.size() != 8) || hex.find_first_not_of("0123456789abcdefABCDEF") != std::string_view::npos) {
+		return std::nullopt;
+	}
+
+	auto byte = [&hex](const size_t i) {
+		return static_cast<uint8_t>(std::stoi(std::string{ hex.substr(i * 2, 2) }, nullptr, 16));
+	};
+
+	return Color{ byte(0), byte(1), byte(2), hex.size() == 8 ? byte(3) : static_cast<uint8_t>(255) };
+}
+
+//colors picked recently, newest first
+static std::deque<Color> recent_colors{};
+
+static void addRecentColor(const Color clr)
+{
+	recent_colors.erase(std::remove_if(recent_colors.begin(), recent_colors.end(), [clr](const Color c) { return sameColor(c, clr); }), recent_colors.end());
+	recent_colors.push_front(clr);
+
+	if (recent_colors.size() > 10) {
+		recent_colors.pop_back();
+	}
+}
+
+//row of clickable swatches, returns the one clicked
+static std::optional<Color> swatchRow(const char *const id, const std::vector<std::pair<Color, std::string>> &swatches)
+{
+	std::optional<Color> picked{};
+
+	const float size{ ImGui::GetFrameHeight() * 0.8f };
+	const float row_w{ ImGui::GetContentRegionAvail().x };
+
+	ImGui::PushID(id);
+
+	float x{};
+
+	for (size_t i{}; i < swatches.size(); i++)
+	{
+		const auto &[clr, name] = swatches[i];
+
+		if (i > 0)
+		{
+			//wrap when the next swatch wouldn't fit
+			if (x + ImGui::GetStyle().ItemSpacing.x + size <= row_w) {
+				ImGui::SameLine();
+				x += ImGui::GetStyle().ItemSpacing.x;
+			}
+
+			else {
+				x = 0.0f;
+			}
+		}
+
+		ImGui::PushID(static_cast<int>(i));
+
+		if (ImGui::ColorButton("##swatch", colorToVec4(clr), ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { size, size })) {
+			picked = clr;
+		}
+
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+			ImGui::SetTooltip("%s", name.empty() ? colorToHex(clr).c_str() : std::format("{}\n{}", name, colorToHex(clr)).c_str());
+		}
+
+		ImGui::PopID();
+
+		x += size;
+	}
+
+	ImGui::PopID();
+
+	return picked;
 }
 
 bool colorPicker(const char *const label, Color *const var)
 {
-	ImVec4 clr{};
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
 
-	clr.x = static_cast<float>(var->r) / 255.0f;
-	clr.y = static_cast<float>(var->g) / 255.0f;
-	clr.z = static_cast<float>(var->b) / 255.0f;
-	clr.w = static_cast<float>(var->a) / 255.0f;
+	const WidgetState state{ var };
 
-	const bool callback{ ImGui::ColorEdit4(label, &clr.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar) };
+	//the color being edited and what it was when its popup opened, to know when to add it to the recent colors
+	static const Color *editing{};
+	static Color edit_start{};
 
-	var->r = static_cast<uint8_t>(clr.x * 255.0f);
-	var->g = static_cast<uint8_t>(clr.y * 255.0f);
-	var->b = static_cast<uint8_t>(clr.z * 255.0f);
-	var->a = static_cast<uint8_t>(clr.w * 255.0f);
+	bool callback{};
+
+	const std::string_view visible{ std::string_view{ label }.substr(0, std::string_view{ label }.find("##")) };
+
+	ImGui::PushID(var);
+
+	ImGui::BeginGroup();
+	{
+		if (ImGui::ColorButton("##color", colorToVec4(*var), ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip))
+		{
+			ImGui::OpenPopup("color_popup");
+
+			editing = var;
+			edit_start = *var;
+		}
+
+		if (!visible.empty()) {
+			ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+			ImGui::TextUnformatted(visible.data(), visible.data() + visible.size());
+		}
+	}
+	ImGui::EndGroup();
+
+	if (ImGui::BeginPopup("color_popup"))
+	{
+		ImGui::PushItemWidth(scaled(200.0f));
+
+		ImVec4 clr{ colorToVec4(*var) };
+		const ImVec4 original{ colorToVec4(edit_start) };
+
+		//the original swatch beside the picker reverts when clicked
+		if (ImGui::ColorPicker4("##picker", &clr.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHex, &original.x)) {
+			*var = vec4ToColor(clr);
+			callback = true;
+		}
+
+		ImGui::PopItemWidth();
+
+		if (ImGui::Button("copy hex")) {
+			ImGui::SetClipboardText(colorToHex(*var).c_str());
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("paste hex"))
+		{
+			const char *const clipboard{ ImGui::GetClipboardText() };
+
+			if (const std::optional<Color> pasted{ colorFromHex(clipboard ? clipboard : "") }) {
+				*var = *pasted;
+				callback = true;
+			}
+
+			else {
+				notifs->warning("clipboard doesn't contain a hex color");
+			}
+		}
+
+		if (!recent_colors.empty())
+		{
+			ImGui::Separator();
+			ImGui::TextDisabled("recent");
+
+			std::vector<std::pair<Color, std::string>> swatches{};
+
+			for (const Color clr : recent_colors) {
+				swatches.push_back({ clr, "" });
+			}
+
+			if (const std::optional<Color> picked{ swatchRow("recent", swatches) }) {
+				*var = *picked;
+				callback = true;
+			}
+		}
+
+		//every other color setting, so matching colors is one click
+		std::vector<std::pair<Color, std::string>> others{};
+
+		for (ConfigVar *const cfg_var : getInsts<ConfigVar>())
+		{
+			if (cfg_var->ptr() == var || cfg_var->hash() != typeid(Color).hash_code()) {
+				continue;
+			}
+
+			const Color other{ *static_cast<Color *>(cfg_var->ptr()) };
+
+			if (std::none_of(others.begin(), others.end(), [other](const auto &o) { return sameColor(o.first, other); })) {
+				others.push_back({ other, cfg_var->name() });
+			}
+		}
+
+		if (!others.empty())
+		{
+			ImGui::Separator();
+			ImGui::TextDisabled("other colors");
+
+			if (const std::optional<Color> picked{ swatchRow("others", others) }) {
+				*var = *picked;
+				callback = true;
+			}
+		}
+
+		ImGui::EndPopup();
+	}
+
+	//popup just closed
+	else if (editing == var)
+	{
+		if (!sameColor(*var, edit_start)) {
+			addRecentColor(*var);
+		}
+
+		editing = nullptr;
+	}
+
+	ImGui::PopID();
+
+	widgetContext(label, var, nullptr);
 
 	return callback;
 }
 
 bool inputString(const char *const label, std::string *const var, const char *const fmt, int flags)
 {
-	return ImGui::InputText(label, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var);
+	if (!widgetVisible(label, var)) {
+		return false;
+	}
+
+	const bool callback{ ImGui::InputText(label, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var) };
+
+	widgetContext(label, var, nullptr);
+
+	return callback;
 }
 
 bool inputStringWithHint(const char *const label, std::string *const var, const char *const hint, const char *const fmt, int flags)
 {
 	return ImGui::InputTextWithHint(label, hint, var->data(), var->capacity() + 1, ImGuiInputTextFlags_CallbackResize | flags, resizeCallback, var);
+}
+
+//==================================================================================================================================
+
+//layout only exists while drawing, the other modes just walk the sections
+
+void beginPage(const char *const id, const float bottom_padding)
+{
+	cur_page = id;
+
+	//sections keep their width, so a narrow menu scrolls sideways instead of squashing them
+	if (mode == WidgetMode::DRAW) {
+		ImGui::BeginChild(id, { 0.0f, -bottom_padding }, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
+	}
+}
+
+void endPage()
+{
+	cur_page.clear();
+
+	if (mode == WidgetMode::DRAW) {
+		ImGui::EndChild();
+	}
+}
+
+void beginColumn(const char *const id)
+{
+	if (mode == WidgetMode::DRAW) {
+		ImGui::BeginChild(id, { 0.0f, 0.0f }, ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY);
+	}
+}
+
+void endColumn()
+{
+	if (mode == WidgetMode::DRAW) {
+		ImGui::EndChild();
+	}
+}
+
+void nextColumn()
+{
+	if (mode == WidgetMode::DRAW) {
+		ImGui::SameLine();
+	}
+}
+
+static void sectionContextTooltip(const bool highlighted)
+{
+	if (highlighted && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+		ImGui::SetTooltip("relevant right now (%s)", context_highlight->describe().c_str());
+	}
+}
+
+static void sectionContext(const RegisteredSection *const sec)
+{
+	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		ImGui::OpenPopup("section_popup_context");
+	}
+
+	if (ImGui::BeginPopup("section_popup_context"))
+	{
+		ImGui::TextUnformatted(sec->title.c_str());
+
+		ImGui::Separator();
+
+		const bool any_changed{ std::any_of(sec->widgets.begin(), sec->widgets.end(), [](const RegisteredWidget &w) { return w.var && !w.var->isDefault(); }) };
+
+		if (ImGui::MenuItem("reset section to defaults", nullptr, false, any_changed))
+		{
+			confirm(std::format("reset all '{}' settings to their defaults?", sec->title), [sec]()
+			{
+				for (const RegisteredWidget &w : sec->widgets)
+				{
+					if (w.var) {
+						w.var->reset();
+					}
+				}
+
+				notifs->message(std::format("reset '{}' to defaults", sec->title));
+			});
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+void section(const char *const id, const char *const title, const float width, const std::function<void()> &body, const float item_width)
+{
+	//padding is kept even with borders turned off, imgui drops it for borderless children otherwise
+	ImGuiChildFlags flags{ ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY };
+
+	//width of 0 fills the available space instead of fitting the contents
+	if (width > 0.0f) {
+		flags |= ImGuiChildFlags_AutoResizeX;
+	}
+
+	RegisteredSection *const sec{ findOrAddSection(id, title) };
+
+	if (mode == WidgetMode::REGISTER)
+	{
+		cur_section = sec;
+		body();
+		cur_section = nullptr;
+
+		return;
+	}
+
+	if (mode == WidgetMode::SEARCH)
+	{
+		const bool title_match{ matchesSearch(sec->path + " " + sec->title) };
+
+		const bool any_match{ title_match || std::any_of(sec->widgets.begin(), sec->widgets.end(), [sec](const RegisteredWidget &w) {
+			return matchesSearch(widgetHaystack(sec, w.label, w.var));
+		}) };
+
+		if (!any_match) {
+			return;
+		}
+
+		search_results++;
+
+		ImGui::BeginChild(sec->key.c_str(), { 0.0f, 0.0f }, ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
+		{
+			ImGui::BeginGroup();
+			ImGui::TextDisabled("%s >", sec->path.c_str());
+			ImGui::SameLine();
+			ImGui::TextUnformatted(title);
+			ImGui::EndGroup();
+			sectionContext(sec);
+
+			const float goto_w{ ImGui::CalcTextSize("go to").x + ImGui::GetStyle().FramePadding.x * 2.0f };
+
+			ImGui::SameLine(ImGui::GetContentRegionMax().x - goto_w);
+
+			if (ImGui::SmallButton("go to")) {
+				search_goto = true;
+			}
+
+			ImGui::Separator();
+
+			ImGui::PushItemWidth(scaled(100.0f));
+
+			cur_section = sec;
+			search_show_all = title_match;
+			body();
+			search_show_all = false;
+			cur_section = nullptr;
+
+			ImGui::PopItemWidth();
+		}
+		ImGui::EndChild();
+
+		return;
+	}
+
+	//the border goes around the child, so it has to be pushed before it begins
+	const bool highlighted{ sectionHighlighted(sec) };
+
+	if (highlighted) {
+		ImGui::PushStyleColor(ImGuiCol_Border, highlightColor());
+	}
+
+	ImGui::BeginChild(id, { scaled(width), 0.0f }, flags);
+	{
+		if (highlighted) {
+			ImGui::PopStyleColor();
+		}
+
+		ImGui::PushItemWidth(item_width > 0.0f ? scaled(item_width) : ImGui::GetContentRegionAvail().x);
+
+		if (highlighted) {
+			ImGui::TextColored(highlightColor(), "%s", title);
+		}
+
+		else {
+			ImGui::TextUnformatted(title);
+		}
+
+		sectionContextTooltip(highlighted);
+		sectionContext(sec);
+		ImGui::Separator();
+
+		cur_section = sec;
+		body();
+		cur_section = nullptr;
+
+		ImGui::PopItemWidth();
+	}
+	ImGui::EndChild();
+}
+
+void sep()
+{
+	if (mode == WidgetMode::DRAW) {
+		ImGui::Separator();
+	}
+}
+
+void heading(const char *const text)
+{
+	if (mode == WidgetMode::DRAW) {
+		ImGui::TextUnformatted(text);
+	}
+}
+
+void settingContext(const char *const label, void *const var)
+{
+	widgetContext(label, var, nullptr);
 }

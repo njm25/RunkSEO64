@@ -1,6 +1,10 @@
 #include "game/game.hpp"
 
 #include "app/features/notifs/notifs.hpp"
+#include "app/features/diagnostics/diagnostics.hpp"
+#include "sdk/tracked/load_report.hpp"
+
+#include <chrono>
 
 constexpr int errc_noerr{ 0 };
 constexpr int errc_sigs{ 1 };
@@ -52,36 +56,77 @@ void dump_error_string(const std::string& errors, const bool copyToClipboard)
 	}
 }
 
+//hooks the menu itself can't live without, missing one is still worth a message box
+static bool isCriticalHook(std::string_view name)
+{
+	return name == "CDirect3DDevice9_EndScene" || name == "MatSurfaceWindowProc";
+}
+
+//globals read directly every frame, there's nothing sensible to fall back to without them
+static bool isCoreSig(std::string_view name)
+{
+	constexpr std::string_view core[]
+	{
+		"net_time", "host_frameticks", "host_frametime_unbounded", "host_frametime_stddeviation", "g_pGameRules",
+		"s_pVertexColor", "s_pVertexColorIgnoreZ", "s_pWireframe", "s_pWireframeIgnoreZ", "C_BaseEntity_m_nPredictionRandomSeed"
+	};
+
+	return std::find(std::begin(core), std::end(core), name) != std::end(core);
+}
+
+static double msSince(const std::chrono::steady_clock::time_point start)
+{
+	return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
 int load()
 {
-	std::string errorSigs{}, errorIfaces{};
-	bool errSigs = false, errIfaces = false;
+	//sigs that don't resolve after a game update only take their own features down,
+	//everything is recorded for the diagnostics tab
+	std::string errorSigs{};
 
-	for ( Sig* const s : getInsts<Sig>() )
+	for (Sig *const s : getInsts<Sig>())
 	{
-		if ( !s || !s->init() ) {
-			if ( !errSigs )
-				errSigs = true;
+		if (!s) {
+			continue;
+		}
 
+		const auto start{ std::chrono::steady_clock::now() };
+		const bool ok{ s->init() };
+
+		load_report->add(LoadItem{ LoadKind::SIG, s->name(), ok, s->addr().get(), msSince(start), ok ? "" : "pattern not found" });
+
+		if (!ok && isCoreSig(s->name())) {
 			errorSigs += std::format("{}\n", s->name());
 		}
 	}
-	if ( errSigs )
+
+	if (!errorSigs.empty())
 	{
 		dump_error_string(errorSigs, true);
 		return errc_sigs;
 	}
 
-	for ( Iface* const i : getInsts<Iface>() )
-	{
-		if ( !i || !i->init() ) {
-			if ( !errIfaces )
-				errIfaces = true;
+	//interfaces are used everywhere, so a missing one still stops the load
+	std::string errorIfaces{};
 
+	for (Iface *const i : getInsts<Iface>())
+	{
+		if (!i) {
+			continue;
+		}
+
+		const auto start{ std::chrono::steady_clock::now() };
+		const bool ok{ i->init() };
+
+		load_report->add(LoadItem{ LoadKind::IFACE, i->name(), ok, reinterpret_cast<uintptr_t>(i->ptr()), msSince(start), ok ? "" : "not found" });
+
+		if (!ok) {
 			errorIfaces += std::format("{}\n", i->name());
 		}
 	}
-	if ( errIfaces )
+
+	if (!errorIfaces.empty())
 	{
 		dump_error_string(errorIfaces, true);
 		return errc_ifaces;
@@ -89,7 +134,15 @@ int load()
 
 	for (CvarInit *const c : getInsts<CvarInit>())
 	{
-		if (!c || !c->init()) {
+		if (!c) {
+			continue;
+		}
+
+		const bool ok{ c->init() };
+
+		load_report->add(LoadItem{ LoadKind::CVAR, c->name(), ok, 0, 0.0, ok ? "" : "cvar not found" });
+
+		if (!ok) {
 			return errc_cvars;
 		}
 	}
@@ -120,10 +173,26 @@ int load()
 		return errc_hooks;
 	}
 
+	std::string errorHooks{};
+
 	for (Hook *const h : getInsts<Hook>())
 	{
-		if (!h || !h->init()) {
-			return errc_hooks;
+		if (!h) {
+			continue;
+		}
+
+		const bool ok{ h->init() };
+
+		std::string detail{};
+
+		if (!ok) {
+			detail = h->target() ? MH_StatusToString(h->status()) : "target not found, its sig is missing";
+		}
+
+		load_report->add(LoadItem{ LoadKind::HOOK, h->name(), ok, reinterpret_cast<uintptr_t>(h->target()), 0.0, detail });
+
+		if (!ok && isCriticalHook(h->name())) {
+			errorHooks += std::format("{} ({})\n", h->name(), detail);
 		}
 	}
 
@@ -131,9 +200,12 @@ int load()
 		return errc_hooks;
 	}
 
-	std::string str = "Greetings from a different thread.";
+	//works out what's disabled, checks for a game update and reports anything that failed
+	diagnostics->finishLoad();
 
-	//ThreadExecute(&thread_test, str);
+	if (!errorHooks.empty()) {
+		dump_error_string("the menu may not work, these hooks failed:\n" + errorHooks, true);
+	}
 
 	return errc_noerr;
 }

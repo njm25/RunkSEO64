@@ -16,6 +16,11 @@ public:
 	}
 
 public:
+	std::string name() const
+	{
+		return m_name;
+	}
+
 	bool init()
 	{
 		if (!m_cvar) {

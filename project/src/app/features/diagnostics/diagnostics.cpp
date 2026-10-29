@@ -327,7 +327,7 @@ std::string Diagnostics::report() const
 {
 	const std::vector<LoadItem> items{ load_report->items() };
 
-	std::string out{ std::format("Runkseo64 build {} ({})\n", BUILD_NUMBER, BUILD_HASH) };
+	std::string out{ std::format("RunkSEO64 build {} ({})\n", BUILD_NUMBER, BUILD_HASH) };
 
 	if (gameUpdated())
 	{

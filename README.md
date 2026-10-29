@@ -1,8 +1,8 @@
-# Runkseo64
+# RunkSEO64
 
 An updated version of **Seo64**, an internal project for 64-bit Team Fortress 2.
 
-It builds into a DLL (`Runkseo64.dll`) that runs inside the TF2 process. It hooks the Source engine and draws an ImGui overlay on top of the game's D3D9 renderer.
+It builds into a DLL (`RunkSEO64.dll`) that runs inside the TF2 process. It hooks the Source engine and draws an ImGui overlay on top of the game's D3D9 renderer.
 
 ## Features
 
@@ -33,7 +33,7 @@ Requirements:
 - Windows SDK
 - C++20
 
-Open `solution.sln`, select `Release | x64`, and build. Output goes to `output\bin\<Configuration>\Runkseo64.dll`, and intermediates go to `output\build\`.
+Open `solution.sln`, select `Release | x64`, and build. Output goes to `output\bin\<Configuration>\RunkSEO64.dll`, and intermediates go to `output\build\`.
 
 ## Project layout
 

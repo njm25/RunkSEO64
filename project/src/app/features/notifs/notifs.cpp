@@ -41,7 +41,7 @@ void Notifs::add(std::string_view str, const NotifType type)
 	});
 
 	if (cfg::notifs_print_to_con) {
-		i::cvar->ConsoleColorPrintf(clr, std::format("[Runkseo64] {}\n", str).c_str());
+		i::cvar->ConsoleColorPrintf(clr, std::format("[RunkSEO64] {}\n", str).c_str());
 	}
 }
 

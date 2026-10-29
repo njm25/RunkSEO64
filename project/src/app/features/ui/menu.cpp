@@ -130,7 +130,7 @@ void Menu::run()
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
 	}
 
-	const bool visible{ ImGui::Begin("Runkseo64", nullptr, window_flags) };
+	const bool visible{ ImGui::Begin("RunkSEO64", nullptr, window_flags) };
 
 	if (custom_bg) {
 		ImGui::PopStyleColor();
@@ -281,7 +281,7 @@ void Menu::run()
 			const std::string build{ std::format("build {} ({})", BUILD_NUMBER, BUILD_HASH) };
 
 			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetStyle().WindowPadding.y - ImGui::GetTextLineHeight());
-			ImGui::TextDisabled("Runkseo64 -");
+			ImGui::TextDisabled("RunkSEO64 -");
 			ImGui::SameLine();
 			drawConfigSwitcher();
 

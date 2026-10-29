@@ -1,6 +1,6 @@
 # RunkSEO64
 
-An updated version of **Seo64**, an internal project for 64-bit Team Fortress 2.
+An updated version of **SEO64**, an internal project for 64-bit Team Fortress 2.
 
 It builds into a DLL (`RunkSEO64.dll`) that runs inside the TF2 process. It hooks the Source engine and draws an ImGui overlay on top of the game's D3D9 renderer.
 
